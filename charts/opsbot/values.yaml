@@ -1,0 +1,142 @@
+replicaCount: 2
+
+image:
+  repository: your-registry/opsbot-backend
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+frontendImage:
+  repository: your-registry/opsbot-frontend
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+workerImage:
+  repository: your-registry/opsbot-backend
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+workerReplicas: 2
+
+service:
+  type: ClusterIP
+  port: 8000
+
+frontend:
+  service:
+    type: ClusterIP
+    port: 3000
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: opsbot.example.com
+      paths:
+        - path: /api
+          pathType: Prefix
+          service: backend
+        - path: /
+          pathType: Prefix
+          service: frontend
+  tls:
+    - secretName: opsbot-tls
+      hosts:
+        - opsbot.example.com
+
+resources:
+  backend:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  worker:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+  frontend:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+postgresql:
+  enabled: true
+  auth:
+    database: opsbot
+    username: opsbot
+    existingSecret: opsbot-postgres-secret
+    secretKeys:
+      adminPasswordKey: postgresql-password
+      userPasswordKey: postgresql-password
+  primary:
+    persistence:
+      size: 20Gi
+
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  master:
+    persistence:
+      size: 5Gi
+
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  interval: 30s
+
+grafanaDashboard:
+  enabled: true
+  namespace: monitoring
+
+env:
+  APP_ENV: production
+  LOG_LEVEL: INFO
+  LITELLM_DEFAULT_MODEL: claude-sonnet-4-6
+
+# These come from a Kubernetes Secret named 'opsbot-secrets'
+secretName: opsbot-secrets
+
+livenessProbe:
+  httpGet:
+    path: /alive
+    port: 8000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8000"
+  prometheus.io/path: "/metrics"
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

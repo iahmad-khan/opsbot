@@ -1,0 +1,139 @@
+from __future__ import annotations
+
+from functools import lru_cache
+from typing import Literal
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    # App
+    app_name: str = "OpsBot"
+    app_env: Literal["development", "staging", "production"] = "development"
+    log_level: str = "INFO"
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
+    cors_origins: list[str] = Field(default=["http://localhost:3000"])
+    secret_key: str = "change-me-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 1440
+
+    # LLM
+    litellm_default_model: str = "claude-sonnet-4-6"
+    anthropic_api_key: str = ""
+    openai_api_key: str = ""
+    google_api_key: str = ""
+    ollama_base_url: str = "http://localhost:11434"
+    litellm_max_tokens: int = 8192
+    litellm_temperature: float = 0.0
+    litellm_max_retries: int = 3
+    litellm_timeout: int = 120
+
+    # Slack
+    slack_bot_token: str = ""
+    slack_app_token: str = ""
+    slack_signing_secret: str = ""
+    slack_default_channel: str = "#ops-bot"
+
+    # Database
+    database_url: str = "postgresql+asyncpg://opsbot:opsbot@localhost:5432/opsbot"
+    database_url_sync: str = "postgresql://opsbot:opsbot@localhost:5432/opsbot"
+    database_pool_size: int = 20
+    database_max_overflow: int = 10
+
+    # Redis
+    redis_url: str = "redis://localhost:6379/0"
+    celery_broker_url: str = "redis://localhost:6379/1"
+    celery_result_backend: str = "redis://localhost:6379/2"
+    conversation_context_ttl: int = 86400  # 24 hours in seconds
+    conversation_max_messages: int = 20
+
+    # GitHub
+    github_token: str = ""
+    github_org: str = ""
+
+    # Kubernetes
+    kubeconfig_path: str = "~/.kube/config"
+    k8s_default_namespace: str = "default"
+
+    # ArgoCD
+    argocd_server_url: str = ""
+    argocd_token: str = ""
+    argocd_insecure: bool = False
+
+    # Terraform
+    terraform_working_dir: str = "/tmp/terraform"
+    tfe_token: str = ""
+
+    # AWS
+    aws_region: str = "us-east-1"
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+
+    # GCP
+    google_application_credentials: str = ""
+    gcp_project: str = ""
+
+    # Azure
+    azure_subscription_id: str = ""
+    azure_tenant_id: str = ""
+    azure_client_id: str = ""
+    azure_client_secret: str = ""
+
+    # Observability
+    prometheus_url: str = "http://localhost:9090"
+    grafana_url: str = "http://localhost:3001"
+    grafana_token: str = ""
+
+    datadog_api_key: str = ""
+    datadog_app_key: str = ""
+    datadog_site: str = "datadoghq.com"
+
+    pagerduty_api_key: str = ""
+    pagerduty_from_email: str = ""
+
+    opsgenie_api_key: str = ""
+
+    # RBAC
+    default_approver_slack_ids: list[str] = Field(default=[])
+    default_user_role: str = "developer"
+    approval_timeout_minutes: int = 30
+    require_dual_approval_for: list[str] = Field(
+        default=["delete_namespace", "drop_database"]
+    )
+
+    # MCP server commands
+    mcp_kubernetes_command: str = "npx -y kubernetes-mcp-server@latest"
+    mcp_github_command: str = "npx -y @modelcontextprotocol/server-github"
+    mcp_terraform_command: str = "docker run --rm -i hashicorp/terraform-mcp-server:0.4.0"
+    mcp_argocd_command: str = "node /app/mcp-servers/argocd-mcp/dist/index.js"
+    mcp_prometheus_command: str = "node /app/mcp-servers/prometheus-mcp/dist/index.js"
+    mcp_datadog_command: str = "node /app/mcp-servers/datadog-mcp/dist/index.js"
+
+    @field_validator("cors_origins", "default_approver_slack_ids", "require_dual_approval_for", mode="before")
+    @classmethod
+    def split_comma(cls, v: str | list) -> list[str]:
+        if isinstance(v, str):
+            return [s.strip() for s in v.split(",") if s.strip()]
+        return v
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env == "production"
+
+    @property
+    def redis_session_url(self) -> str:
+        return self.redis_url
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

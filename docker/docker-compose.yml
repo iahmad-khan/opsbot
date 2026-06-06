@@ -1,0 +1,120 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: opsbot
+      POSTGRES_PASSWORD: opsbot
+      POSTGRES_DB: opsbot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opsbot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ../backend
+      target: production
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://opsbot:opsbot@postgres:5432/opsbot
+      DATABASE_URL_SYNC: postgresql://opsbot:opsbot@postgres:5432/opsbot
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../backend:/app
+      - ~/.kube:/root/.kube:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/alive"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ../backend
+      target: worker
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://opsbot:opsbot@postgres:5432/opsbot
+      DATABASE_URL_SYNC: postgresql://opsbot:opsbot@postgres:5432/opsbot
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../backend:/app
+      - ~/.kube:/root/.kube:ro
+    restart: unless-stopped
+
+  beat:
+    build:
+      context: ../backend
+      target: beat
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://opsbot:opsbot@postgres:5432/opsbot
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      - redis
+    volumes:
+      - ../backend:/app
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      API_URL: http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Flower — Celery monitoring
+  flower:
+    image: mher/flower:2.0
+    command: celery flower --broker=redis://redis:6379/1 --port=5555
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

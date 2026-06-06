@@ -1,0 +1,144 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opsbot.fullname" . }}-backend
+  labels:
+    {{- include "opsbot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "opsbot.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      annotations:
+        {{- toYaml .Values.podAnnotations | nindent 8 }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      labels:
+        {{- include "opsbot.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      serviceAccountName: {{ include "opsbot.fullname" . }}
+      containers:
+        - name: backend
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secretName }}
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources.backend | nindent 12 }}
+          volumeMounts:
+            - name: kubeconfig
+              mountPath: /root/.kube
+              readOnly: true
+      volumes:
+        - name: kubeconfig
+          secret:
+            secretName: {{ include "opsbot.fullname" . }}-kubeconfig
+            optional: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opsbot.fullname" . }}-worker
+  labels:
+    {{- include "opsbot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.workerReplicas }}
+  selector:
+    matchLabels:
+      {{- include "opsbot.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "opsbot.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+    spec:
+      containers:
+        - name: worker
+          image: "{{ .Values.workerImage.repository }}:{{ .Values.workerImage.tag }}"
+          imagePullPolicy: {{ .Values.workerImage.pullPolicy }}
+          command:
+            - celery
+            - -A
+            - opsbot.tasks.celery_app:celery_app
+            - worker
+            - --loglevel=info
+            - --concurrency=4
+            - -Q
+            - default,approvals,sre
+          env:
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secretName }}
+          resources:
+            {{- toYaml .Values.resources.worker | nindent 12 }}
+          volumeMounts:
+            - name: kubeconfig
+              mountPath: /root/.kube
+              readOnly: true
+      volumes:
+        - name: kubeconfig
+          secret:
+            secretName: {{ include "opsbot.fullname" . }}-kubeconfig
+            optional: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opsbot.fullname" . }}-frontend
+  labels:
+    {{- include "opsbot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "opsbot.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        {{- include "opsbot.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: "{{ .Values.frontendImage.repository }}:{{ .Values.frontendImage.tag }}"
+          imagePullPolicy: {{ .Values.frontendImage.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: API_URL
+              value: "http://{{ include "opsbot.fullname" . }}-backend:{{ .Values.service.port }}"
+            - name: NEXT_PUBLIC_API_URL
+              value: "/api/backend"
+          resources:
+            {{- toYaml .Values.resources.frontend | nindent 12 }}

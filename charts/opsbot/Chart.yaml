@@ -1,0 +1,15 @@
+apiVersion: v2
+name: opsbot
+description: Advanced DevOps & SRE Automation Platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - devops
+  - sre
+  - automation
+  - chatops
+  - slack
+maintainers:
+  - name: DevOps Team
+    email: devops@example.com
