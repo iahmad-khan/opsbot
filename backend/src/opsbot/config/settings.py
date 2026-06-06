@@ -102,6 +102,14 @@ class Settings(BaseSettings):
 
     opsgenie_api_key: str = ""
 
+    # OpenSearch / Elasticsearch
+    opensearch_url: str = "http://localhost:9200"
+    opensearch_username: str = ""
+    opensearch_password: str = ""
+    opensearch_api_key: str = ""
+    opensearch_default_index: str = "logs-*"
+    opensearch_verify_ssl: bool = True
+
     # RBAC
     default_approver_slack_ids: list[str] = Field(default=[])
     default_user_role: str = "developer"
@@ -117,6 +125,7 @@ class Settings(BaseSettings):
     mcp_argocd_command: str = "node /app/mcp-servers/argocd-mcp/dist/index.js"
     mcp_prometheus_command: str = "node /app/mcp-servers/prometheus-mcp/dist/index.js"
     mcp_datadog_command: str = "node /app/mcp-servers/datadog-mcp/dist/index.js"
+    mcp_opensearch_command: str = "node /app/mcp-servers/opensearch-mcp/dist/index.js"
 
     @field_validator("cors_origins", "default_approver_slack_ids", "require_dual_approval_for", mode="before")
     @classmethod

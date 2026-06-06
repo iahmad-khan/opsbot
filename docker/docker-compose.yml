@@ -106,6 +106,26 @@ services:
       - backend
     restart: unless-stopped
 
+  # OpenSearch — optional, enable with: docker compose --profile opensearch up
+  # Skip if you already have an OpenSearch/Elasticsearch cluster.
+  opensearch:
+    image: opensearchproject/opensearch:2.17.0
+    profiles: ["opensearch"]
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+
   # Flower — Celery monitoring
   flower:
     image: mher/flower:2.0
@@ -118,3 +138,4 @@ services:
 
 volumes:
   postgres_data:
+  opensearch_data:

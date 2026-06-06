@@ -100,7 +100,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        server: [argocd-mcp, prometheus-mcp, datadog-mcp]
+        server: [argocd-mcp, prometheus-mcp, datadog-mcp, opensearch-mcp]
     defaults:
       run:
         working-directory: mcp-servers/${{ matrix.server }}

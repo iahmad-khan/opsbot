@@ -56,6 +56,20 @@ TOOL_RISK_MAP: dict[str, str] = {
     "datadog_query_metrics": RiskLevel.READ,
     "datadog_get_logs": RiskLevel.READ,
     "datadog_list_monitors": RiskLevel.READ,
+    # OpenSearch / Elasticsearch
+    "opensearch_search_logs": RiskLevel.READ,
+    "opensearch_get_error_summary": RiskLevel.READ,
+    "opensearch_count_events": RiskLevel.READ,
+    "opensearch_search_slow_queries": RiskLevel.READ,
+    "opensearch_get_log_field_values": RiskLevel.READ,
+    "opensearch_list_indices": RiskLevel.READ,
+    # MCP-prefixed variants (opensearch-mcp server)
+    "search_logs": RiskLevel.READ,
+    "get_error_summary": RiskLevel.READ,
+    "count_events": RiskLevel.READ,
+    "search_slow_queries": RiskLevel.READ,
+    "get_log_field_values": RiskLevel.READ,
+    "list_indices": RiskLevel.READ,
 
     # === WRITE ===
     "k8s_restart_deployment": RiskLevel.WRITE,

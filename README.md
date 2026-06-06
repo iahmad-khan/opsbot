@@ -18,6 +18,9 @@ OpsBot lives in Slack. Engineers ask naturally, OpsBot acts. Destructive operati
 | "run terraform plan in staging" | Runs plan, posts diff to Slack |
 | "analyze checkout-service and propose SLOs" | Queries 30-day Prometheus data, generates SLO YAML, offers to open a PR |
 | "investigate the 5xx spike in payment-service" | Correlates logs + metrics + K8s events, produces structured RCA |
+| "check timeout errors in elasticsearch logs for payment-service" | Queries OpenSearch/ES, returns top error patterns + timeline |
+| "how many 5xx errors in the last 30 minutes in checkout?" | Counts matching log events with per-5min breakdown |
+| "analyze log patterns for order-service and find the most frequent errors" | Aggregation of top error messages by frequency |
 
 ---
 
@@ -219,6 +222,7 @@ OLLAMA_BASE_URL=http://localhost:11434
 | PagerDuty | `PAGERDUTY_API_KEY`, `PAGERDUTY_FROM_EMAIL` |
 | OpsGenie | `OPSGENIE_API_KEY` |
 | DataDog | `DATADOG_API_KEY`, `DATADOG_APP_KEY` |
+| OpenSearch / Elasticsearch | `OPENSEARCH_URL`, `OPENSEARCH_USERNAME` + `OPENSEARCH_PASSWORD` **or** `OPENSEARCH_API_KEY`, `OPENSEARCH_DEFAULT_INDEX` |
 
 ### RBAC
 
@@ -272,6 +276,74 @@ OpsBot:
 
 ---
 
+## OpenSearch / Elasticsearch log analysis
+
+OpsBot connects to your existing OpenSearch or Elasticsearch cluster (both use the same REST API — no code changes needed between the two).
+
+### Example queries
+
+```
+@opsbot check timeout errors in elasticsearch logs for payment-service
+@opsbot show me error logs from checkout-service in the last 2 hours
+@opsbot how many 5xx errors in the last 30 minutes in order-service?
+@opsbot analyze log patterns for payment-service and find the most frequent errors
+@opsbot find slow queries in the order-service logs
+@opsbot what services are generating the most errors right now?
+```
+
+### Available tools
+
+| Tool | Description |
+|---|---|
+| `search_logs` | Full-text search with service, level, and time filters |
+| `get_error_summary` | Top error messages by frequency + error timeline |
+| `count_events` | Count matching log events with per-5-min breakdown |
+| `search_slow_queries` | Find timeout/slow patterns across common frameworks |
+| `get_log_field_values` | Top values for any field (status codes, services, etc.) |
+| `list_indices` | Discover available index patterns in the cluster |
+
+### Configuration
+
+```env
+OPENSEARCH_URL=http://opensearch.internal:9200
+
+# Basic auth
+OPENSEARCH_USERNAME=opsbot
+OPENSEARCH_PASSWORD=secret
+
+# OR API key (Elastic Cloud / OpenSearch Serverless)
+OPENSEARCH_API_KEY=base64encodedkey==
+
+# Index pattern — adjust to match how you ship logs
+# filebeat:   OPENSEARCH_DEFAULT_INDEX=filebeat-*
+# fluentd:    OPENSEARCH_DEFAULT_INDEX=fluentd-*
+# Logstash:   OPENSEARCH_DEFAULT_INDEX=logstash-*
+# ECS/OTel:   OPENSEARCH_DEFAULT_INDEX=logs-*
+OPENSEARCH_DEFAULT_INDEX=logs-*
+```
+
+### Local development with OpenSearch
+
+```bash
+# Start OpenSearch alongside the rest of the stack
+docker compose -f docker/docker-compose.yml --profile opensearch up -d
+```
+
+This spins up a single-node OpenSearch 2.17 on `:9200` with security disabled (dev only).
+
+### Field compatibility
+
+The integration auto-detects log fields across the most common shipping formats:
+
+| Field purpose | Checked fields |
+|---|---|
+| Service name | `service.name`, `kubernetes.labels.app`, `app`, `fields.service` |
+| Log level | `log.level`, `level`, `severity`, `loglevel` |
+| Timestamp | `@timestamp` (ECS standard) |
+| Message | `message`, `msg`, `log.message` |
+
+---
+
 ## Deployment (Kubernetes)
 
 ### Helm install
@@ -319,6 +391,7 @@ Three custom MCP servers are included in `mcp-servers/`:
 | `argocd-mcp` | `list_apps`, `get_app`, `sync_app`, `rollback_app`, `get_app_history`, `refresh_app` |
 | `prometheus-mcp` | `query_metrics`, `query_range`, `list_alerts`, `list_rules`, `list_targets`, `silence_alert` |
 | `datadog-mcp` | `query_metrics`, `get_logs`, `list_monitors`, `get_monitor`, `mute_monitor` |
+| `opensearch-mcp` | `search_logs`, `get_error_summary`, `count_events`, `search_slow_queries`, `get_log_field_values`, `list_indices` |
 
 Build them:
 
@@ -326,6 +399,7 @@ Build them:
 cd mcp-servers/argocd-mcp && npm install && npm run build
 cd mcp-servers/prometheus-mcp && npm install && npm run build
 cd mcp-servers/datadog-mcp && npm install && npm run build
+cd mcp-servers/opensearch-mcp && npm install && npm run build
 ```
 
 OpsBot also connects to these off-the-shelf MCP servers automatically when configured:
