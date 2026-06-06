@@ -66,6 +66,12 @@ dependencies = [
     # OpenSearch / Elasticsearch
     "opensearch-py[async]>=2.7.0",
 
+    # GitLab
+    "python-gitlab>=4.9.0",
+
+    # Atlassian (Jira + Confluence + Bitbucket)
+    "atlassian-python-api>=3.41.0",
+
     # HTTP
     "httpx>=0.28.0",
     "aiohttp>=3.11.0",

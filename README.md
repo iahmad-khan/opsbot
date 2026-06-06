@@ -19,6 +19,12 @@ OpsBot lives in Slack. Engineers ask naturally, OpsBot acts. Destructive operati
 | "analyze checkout-service and propose SLOs" | Queries 30-day Prometheus data, generates SLO YAML, offers to open a PR |
 | "investigate the 5xx spike in payment-service" | Correlates logs + metrics + K8s events, produces structured RCA |
 | "check timeout errors in elasticsearch logs for payment-service" | Queries OpenSearch/ES, returns top error patterns + timeline |
+| "create a jira ticket for the payment-service timeout — high priority" | Creates Jira issue in the configured project |
+| "what are the open PRs in the backend repo on bitbucket?" | Lists open PRs with author, branch, and CI status |
+| "merge the hotfix MR in gitlab" | Merges GitLab MR (approval required) |
+| "create a confluence page documenting this RCA in the SRE space" | Creates a formatted page in Confluence |
+| "transition PROJ-123 to In Review and assign it to john" | Updates Jira issue status and assignee |
+| "trigger the gitlab pipeline for backend on main" | Triggers CI/CD pipeline (write-gated) |
 | "how many 5xx errors in the last 30 minutes in checkout?" | Counts matching log events with per-5min breakdown |
 | "analyze log patterns for order-service and find the most frequent errors" | Aggregation of top error messages by frequency |
 
@@ -223,6 +229,13 @@ OLLAMA_BASE_URL=http://localhost:11434
 | OpsGenie | `OPSGENIE_API_KEY` |
 | DataDog | `DATADOG_API_KEY`, `DATADOG_APP_KEY` |
 | OpenSearch / Elasticsearch | `OPENSEARCH_URL`, `OPENSEARCH_USERNAME` + `OPENSEARCH_PASSWORD` **or** `OPENSEARCH_API_KEY`, `OPENSEARCH_DEFAULT_INDEX` |
+| Bitbucket Cloud | `BITBUCKET_WORKSPACE`, `BITBUCKET_USERNAME`, `BITBUCKET_APP_PASSWORD` |
+| Bitbucket Server | `BITBUCKET_URL=https://bb.co`, `BITBUCKET_TOKEN` (PAT) |
+| GitLab Cloud / Self-hosted | `GITLAB_URL`, `GITLAB_TOKEN` (api scope), `GITLAB_DEFAULT_GROUP` |
+| Jira Cloud | `JIRA_URL=https://site.atlassian.net`, `JIRA_USERNAME` (email), `JIRA_API_TOKEN` |
+| Jira Server / DC | `JIRA_URL=https://jira.co`, `JIRA_USERNAME`, `JIRA_API_TOKEN` (password or PAT) |
+| Confluence Cloud | `CONFLUENCE_URL=https://site.atlassian.net/wiki`, `CONFLUENCE_USERNAME`, `CONFLUENCE_API_TOKEN` |
+| Confluence Server / DC | `CONFLUENCE_URL=https://confluence.co`, `CONFLUENCE_USERNAME`, `CONFLUENCE_API_TOKEN` |
 
 ### RBAC
 
@@ -273,6 +286,105 @@ OpsBot:
 5. Feeds everything to Claude with a structured RCA prompt
 6. Returns: root cause, confidence %, timeline, contributing factors, remediation steps
 7. Optionally creates a GitHub issue + fix PR
+
+---
+
+## Bitbucket, GitLab, Jira & Confluence
+
+OpsBot integrates with the full Atlassian + GitLab ecosystem. Both Cloud and self-hosted Server/Data Center variants are supported — just point the URL to your instance.
+
+### Example requests
+
+```
+# Bitbucket
+@opsbot list open PRs in the backend repo
+@opsbot create a PR from feature/payment-fix to main in backend repo
+@opsbot merge PR #42 in payment-service repo
+@opsbot trigger the staging pipeline on the hotfix branch in backend
+@opsbot give john read access to the frontend repo
+
+# GitLab
+@opsbot show me open merge requests in group/backend project
+@opsbot create a MR from feature/logging to main in backend/api
+@opsbot what's the status of pipeline #1234 in backend/api?
+@opsbot trigger a pipeline on the release branch for backend/api
+@opsbot retry the failed pipeline #1234
+@opsbot create an issue in backend/api: "Fix connection pool timeout"
+@opsbot close issue #56 in backend/api
+
+# Jira
+@opsbot create a high-priority bug ticket: "payment-service timeout causing 5xx errors in prod"
+@opsbot show me all open tickets in the SRE project
+@opsbot what tickets are assigned to me?
+@opsbot transition PROJ-123 to "In Review"
+@opsbot assign PROJ-456 to alice
+@opsbot add a comment to PROJ-789: "Deployed hotfix v1.2.1, monitoring for 30 min"
+@opsbot link PROJ-123 to PROJ-100 as "blocks"
+@opsbot search for issues with label "production-incident" in the last 7 days
+
+# Confluence
+@opsbot create a confluence page in SRE space titled "Incident RCA - Payment Service 2026-06-06"
+@opsbot find the runbook for deploying the checkout service
+@opsbot append the postmortem timeline to page ID 12345
+@opsbot list pages in the SRE space
+@opsbot create a page under the Incidents section documenting this outage
+```
+
+### Risk classification
+
+| Operation | Risk level |
+|---|---|
+| Read PRs/MRs, issues, pages, pipelines | READ (auto-execute) |
+| Create PR/MR, create issue, create page, add comment, update issue, transition issue, create branch, trigger pipeline | WRITE (execute + notify) |
+| Merge PR/MR | DESTRUCTIVE (Slack approval required) |
+
+### Atlassian Cloud vs Server/DC
+
+For Atlassian Cloud, both Jira and Confluence share the same credentials:
+
+```env
+JIRA_URL=https://yoursite.atlassian.net
+JIRA_USERNAME=you@company.com
+JIRA_API_TOKEN=your-api-token          # from id.atlassian.com → Security → API tokens
+
+CONFLUENCE_URL=https://yoursite.atlassian.net/wiki
+CONFLUENCE_USERNAME=you@company.com    # same email
+CONFLUENCE_API_TOKEN=your-api-token    # same token
+```
+
+For Server/DC, use username + password or a Personal Access Token (PAT):
+
+```env
+JIRA_URL=https://jira.yourcompany.com
+JIRA_USERNAME=svc-opsbot
+JIRA_API_TOKEN=your-pat-or-password
+
+CONFLUENCE_URL=https://confluence.yourcompany.com
+CONFLUENCE_USERNAME=svc-opsbot
+CONFLUENCE_API_TOKEN=your-pat-or-password
+```
+
+### Bitbucket Cloud vs Server
+
+```env
+# Cloud — use an App Password (not your account password)
+BITBUCKET_URL=https://api.bitbucket.org/2.0
+BITBUCKET_WORKSPACE=your-workspace
+BITBUCKET_USERNAME=your-username
+BITBUCKET_APP_PASSWORD=your-app-password
+
+# Server — use a Personal Access Token
+BITBUCKET_URL=https://bitbucket.yourcompany.com
+BITBUCKET_TOKEN=your-pat
+```
+
+### GitLab
+
+```env
+GITLAB_URL=https://gitlab.com            # or https://gitlab.yourcompany.com
+GITLAB_TOKEN=your-personal-access-token  # requires: api, read_user scopes
+GITLAB_DEFAULT_GROUP=your-group          # default for project listing
+```
 
 ---
 
@@ -392,14 +504,17 @@ Three custom MCP servers are included in `mcp-servers/`:
 | `prometheus-mcp` | `query_metrics`, `query_range`, `list_alerts`, `list_rules`, `list_targets`, `silence_alert` |
 | `datadog-mcp` | `query_metrics`, `get_logs`, `list_monitors`, `get_monitor`, `mute_monitor` |
 | `opensearch-mcp` | `search_logs`, `get_error_summary`, `count_events`, `search_slow_queries`, `get_log_field_values`, `list_indices` |
+| `bitbucket-mcp` | `list_repos`, `list_prs`, `get_pr`, `create_pr`, `merge_pr`, `decline_pr`, `add_pr_comment`, `list_branches`, `create_branch`, `get_pipeline_status`, `trigger_pipeline`, `add_user_to_repo` |
+| `gitlab-mcp` | `list_projects`, `get_project`, `list_mrs`, `get_mr`, `create_mr`, `merge_mr`, `list_issues`, `get_issue`, `create_issue`, `update_issue`, `add_issue_comment`, `list_pipelines`, `get_pipeline`, `trigger_pipeline`, `retry_pipeline`, `cancel_pipeline`, `list_branches`, `create_branch`, `add_member`, `list_tags`, `create_tag` |
+| `jira-mcp` | `search_issues`, `get_issue`, `create_issue`, `update_issue`, `add_comment`, `transition_issue`, `assign_issue`, `list_projects`, `list_transitions`, `get_my_issues`, `search_users`, `link_issues`, `get_issue_changelog` |
+| `confluence-mcp` | `search_pages`, `get_page`, `create_page`, `update_page`, `append_to_page`, `add_comment`, `list_spaces`, `get_space`, `get_page_children`, `move_page` |
 
 Build them:
 
 ```bash
-cd mcp-servers/argocd-mcp && npm install && npm run build
-cd mcp-servers/prometheus-mcp && npm install && npm run build
-cd mcp-servers/datadog-mcp && npm install && npm run build
-cd mcp-servers/opensearch-mcp && npm install && npm run build
+for srv in argocd-mcp prometheus-mcp datadog-mcp opensearch-mcp bitbucket-mcp gitlab-mcp jira-mcp confluence-mcp; do
+  (cd mcp-servers/$srv && npm install && npm run build)
+done
 ```
 
 OpsBot also connects to these off-the-shelf MCP servers automatically when configured:

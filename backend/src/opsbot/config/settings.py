@@ -102,6 +102,30 @@ class Settings(BaseSettings):
 
     opsgenie_api_key: str = ""
 
+    # Bitbucket (Cloud or Server)
+    bitbucket_url: str = "https://api.bitbucket.org/2.0"
+    bitbucket_username: str = ""
+    bitbucket_app_password: str = ""  # Cloud: app password; Server: use bitbucket_token
+    bitbucket_token: str = ""         # Server PAT or OAuth token
+    bitbucket_workspace: str = ""
+
+    # GitLab (Cloud or self-hosted)
+    gitlab_url: str = "https://gitlab.com"
+    gitlab_token: str = ""
+    gitlab_default_group: str = ""
+
+    # Jira (Cloud or Server/Data Center)
+    jira_url: str = ""
+    jira_username: str = ""   # Cloud: email address; Server: username
+    jira_api_token: str = ""  # Cloud: API token; Server: password or PAT
+    jira_default_project: str = ""
+
+    # Confluence (Cloud or Server/Data Center)
+    confluence_url: str = ""
+    confluence_username: str = ""   # Cloud: email address; Server: username
+    confluence_api_token: str = ""  # Cloud: API token; Server: password or PAT
+    confluence_default_space: str = ""
+
     # OpenSearch / Elasticsearch
     opensearch_url: str = "http://localhost:9200"
     opensearch_username: str = ""
@@ -126,6 +150,10 @@ class Settings(BaseSettings):
     mcp_prometheus_command: str = "node /app/mcp-servers/prometheus-mcp/dist/index.js"
     mcp_datadog_command: str = "node /app/mcp-servers/datadog-mcp/dist/index.js"
     mcp_opensearch_command: str = "node /app/mcp-servers/opensearch-mcp/dist/index.js"
+    mcp_bitbucket_command: str = "node /app/mcp-servers/bitbucket-mcp/dist/index.js"
+    mcp_gitlab_command: str = "node /app/mcp-servers/gitlab-mcp/dist/index.js"
+    mcp_jira_command: str = "node /app/mcp-servers/jira-mcp/dist/index.js"
+    mcp_confluence_command: str = "node /app/mcp-servers/confluence-mcp/dist/index.js"
 
     @field_validator("cors_origins", "default_approver_slack_ids", "require_dual_approval_for", mode="before")
     @classmethod
