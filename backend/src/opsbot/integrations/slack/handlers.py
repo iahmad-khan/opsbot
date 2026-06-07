@@ -115,11 +115,18 @@ async def _handle_message_event(event: dict, say, client) -> None:
         log.warning("slack.rate_limited", user=requester_slack_id)
         return
 
-    # Acknowledge receipt immediately
-    await say(
-        text="⏳ Working on it...",
-        thread_ts=thread_ts,
-    )
+    # Acknowledge receipt immediately and capture the message ts so the Celery
+    # worker can update it with per-tool progress (prevents 30-120 s of silence).
+    try:
+        ack_resp = await client.chat_postMessage(
+            channel=channel_id,
+            text="⏳ Working on it...",
+            thread_ts=thread_ts,
+        )
+        working_ts = ack_resp.get("ts")
+    except Exception as exc:
+        log.warning("slack.ack.failed", error=str(exc))
+        working_ts = None
 
     # Dispatch to Celery (keeps Slack's 3s timeout happy)
     from opsbot.tasks.celery_app import process_message_task
@@ -128,6 +135,7 @@ async def _handle_message_event(event: dict, say, client) -> None:
         channel_id=channel_id,
         requester_slack_id=requester_slack_id,
         thread_ts=thread_ts,
+        working_ts=working_ts,
     )
 
 

@@ -173,6 +173,9 @@ TOOL_RISK_MAP: dict[str, str] = {
     "github_create_pr": RiskLevel.WRITE,
     "github_create_branch": RiskLevel.WRITE,
     "github_create_issue": RiskLevel.WRITE,
+    # GitHub Actions workflow dispatch (WRITE — can be cancelled)
+    "github_trigger_workflow": RiskLevel.WRITE,
+    "create_workflow_dispatch": RiskLevel.WRITE,   # official GitHub MCP server name
     "argocd_refresh_app": RiskLevel.WRITE,
     "pagerduty_acknowledge": RiskLevel.WRITE,
     "pagerduty_create_incident": RiskLevel.WRITE,
@@ -223,6 +226,8 @@ def get_human_description(tool_name: str, args: dict) -> str:
         "github_add_member": lambda a: f"Add `{a.get('username')}` to GitHub repo `{a.get('repo')}` with `{a.get('permission', 'read')}` access",
         "github_remove_member": lambda a: f"Remove `{a.get('username')}` from GitHub repo `{a.get('repo')}`",
         "github_create_pr": lambda a: f"Create PR `{a.get('title')}` in `{a.get('repo')}`",
+        "github_trigger_workflow": lambda a: f"Trigger GitHub Actions `{a.get('workflow_id')}` on `{a.get('ref', 'main')}` in `{a.get('repo')}`",
+        "create_workflow_dispatch": lambda a: f"Trigger GitHub Actions `{a.get('workflow_id', a.get('workflowId'))}` on `{a.get('ref', 'main')}` in `{a.get('repo')}`",
         "bitbucket_merge_pr": lambda a: f"Merge Bitbucket PR #{a.get('pr_id')} in `{a.get('workspace', '')}/{a.get('repo')}`",
         "gitlab_merge_mr": lambda a: f"Merge GitLab MR !{a.get('mr_iid')} in `{a.get('project')}`",
         "gitlab_trigger_pipeline": lambda a: f"Trigger GitLab pipeline on `{a.get('ref')}` in `{a.get('project')}`",

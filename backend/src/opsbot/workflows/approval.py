@@ -72,6 +72,19 @@ class ApprovalWorkflow:
             await db.commit()
             raise ValueError("Approval has expired")
 
+        # Self-approval is never permitted — a different person must review.
+        if approver_slack_id == approval.requester_slack_id:
+            raise ValueError(
+                "You cannot approve your own request. "
+                "Another admin or SRE must approve this operation."
+            )
+
+        # Block approvals during a configured deployment freeze window.
+        from opsbot.workflows.freeze import is_in_freeze_window
+        if is_in_freeze_window():
+            s = get_settings()
+            raise ValueError(f"Approval blocked: {s.freeze_deployment_message}")
+
         # Verify the approver has the required role (admin or sre)
         from opsbot.models.db import User
         user_result = await db.execute(select(User).where(User.slack_user_id == approver_slack_id))

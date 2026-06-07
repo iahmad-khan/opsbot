@@ -99,6 +99,10 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
       API_URL: http://backend:8000
+      # NextAuth — required when DASHBOARD_SECRET is set
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ${SECRET_KEY:-change-me-in-production}
+      DASHBOARD_SECRET: ${DASHBOARD_SECRET:-}
     depends_on:
       - backend
     restart: unless-stopped

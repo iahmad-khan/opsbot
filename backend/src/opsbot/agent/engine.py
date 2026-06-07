@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 import structlog
@@ -93,6 +94,7 @@ class AgentEngine:
         thread_ts: str | None = None,
         task_id: str | None = None,
         requester_role: str = "developer",
+        progress_callback: Callable[[str], Awaitable[None]] | None = None,
     ) -> AgentResult:
         log.info("agent.process", channel=channel_id, user=requester_slack_id, message=message[:80])
 
@@ -140,6 +142,18 @@ class AgentEngine:
                 log.info("agent.tool_call", tool=tool_name, risk=risk, iteration=iterations)
 
                 if risk == RiskLevel.DESTRUCTIVE:
+                    # Block immediately during a configured freeze window instead of
+                    # creating an approval request that can never be executed.
+                    from opsbot.workflows.freeze import is_in_freeze_window
+                    if is_in_freeze_window():
+                        from opsbot.config.settings import get_settings
+                        freeze_msg = get_settings().freeze_deployment_message
+                        result_text = f"⛔ {freeze_msg}"
+                        tool_result_messages.append(
+                            self._llm.build_tool_result_message(tc.id, result_text)
+                        )
+                        tool_calls_made.append({"tool": tool_name, "args": tool_args, "success": False, "error": "freeze_window"})
+                        continue
                     description = get_human_description(tool_name, tool_args)
                     await self._memory.append_many(channel_id, history[initial_length:], thread_ts)
                     raise NeedsApprovalError(tool_name, tool_args, description, tool_call_id=tc.id)
@@ -153,6 +167,12 @@ class AgentEngine:
                     tool_calls_made.append({"tool": tool_name, "args": tool_args, "success": False, "error": "permission_denied"})
                     tool_result_messages.append(self._llm.build_tool_result_message(tc.id, result_text))
                     continue
+
+                # Notify Slack of the in-progress tool so users aren't left staring
+                # at a silent "⏳ Working on it..." for 30–120 s.
+                if progress_callback:
+                    display = tool_name.split("__")[-1] if "__" in tool_name else tool_name
+                    await progress_callback(f"🔧 Running `{display}`...")
 
                 # Execute the tool
                 try:

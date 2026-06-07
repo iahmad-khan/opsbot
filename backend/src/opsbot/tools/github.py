@@ -133,3 +133,31 @@ class GitHubTools:
         source = r.get_branch(from_ref)
         r.create_git_ref(f"refs/heads/{branch}", source.commit.sha)
         return {"repo": full_name, "branch": branch, "from": from_ref, "status": "created"}
+
+    def trigger_workflow(
+        self,
+        repo: str,
+        workflow_id: str,
+        ref: str = "main",
+        inputs: dict | None = None,
+        org: str | None = None,
+    ) -> dict:
+        """Dispatch a GitHub Actions workflow via workflow_dispatch event.
+
+        workflow_id can be the workflow filename (e.g. "deploy.yml") or numeric ID.
+        Requires GITHUB_TOKEN with actions:write permission on the target repo.
+        """
+        s = get_settings()
+        g = _gh_client()
+        org_name = org or s.github_org
+        full_name = f"{org_name}/{repo}" if org_name and "/" not in repo else repo
+        r = g.get_repo(full_name)
+        workflow = r.get_workflow(workflow_id)
+        success = workflow.create_dispatch(ref=ref, inputs=inputs or {})
+        log.info("github.workflow.triggered", repo=full_name, workflow=workflow_id, ref=ref)
+        return {
+            "repo": full_name,
+            "workflow": workflow_id,
+            "ref": ref,
+            "status": "triggered" if success else "failed",
+        }

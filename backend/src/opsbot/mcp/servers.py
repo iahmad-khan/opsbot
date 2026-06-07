@@ -20,18 +20,34 @@ def get_server_configs() -> list[MCPServerConfig]:
     s = get_settings()
     configs: list[MCPServerConfig] = []
 
-    # Kubernetes MCP Server
+    # Kubernetes MCP Server(s)
+    # When k8s_contexts is set, spawn one server per context so the agent can
+    # target any cluster by name (tools are namespaced "kubernetes-<ctx>__<tool>").
+    # When empty, fall back to a single server using the active kubeconfig context.
     k8s_cmd = s.mcp_kubernetes_command.split()
     if k8s_cmd:
-        configs.append(MCPServerConfig(
-            name="kubernetes",
-            command=k8s_cmd[0],
-            args=k8s_cmd[1:],
-            env={
-                "KUBECONFIG": os.path.expanduser(s.kubeconfig_path),
-            },
-            description="Kubernetes cluster operations",
-        ))
+        if s.k8s_contexts:
+            for ctx in s.k8s_contexts:
+                configs.append(MCPServerConfig(
+                    name=f"kubernetes-{ctx}",
+                    command=k8s_cmd[0],
+                    args=k8s_cmd[1:],
+                    env={
+                        "KUBECONFIG": os.path.expanduser(s.kubeconfig_path),
+                        "KUBECONTEXT": ctx,
+                    },
+                    description=f"Kubernetes cluster: {ctx}",
+                ))
+        else:
+            configs.append(MCPServerConfig(
+                name="kubernetes",
+                command=k8s_cmd[0],
+                args=k8s_cmd[1:],
+                env={
+                    "KUBECONFIG": os.path.expanduser(s.kubeconfig_path),
+                },
+                description="Kubernetes cluster operations",
+            ))
 
     # GitHub MCP Server
     if s.github_token:

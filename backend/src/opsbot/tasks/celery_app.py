@@ -118,11 +118,12 @@ def process_message_task(
     channel_id: str,
     requester_slack_id: str,
     thread_ts: str | None = None,
+    working_ts: str | None = None,
 ) -> dict:
-    return _run_async(_process_message(self, message, channel_id, requester_slack_id, thread_ts))
+    return _run_async(_process_message(self, message, channel_id, requester_slack_id, thread_ts, working_ts))
 
 
-async def _process_message(task, message: str, channel_id: str, requester_slack_id: str, thread_ts: str | None) -> dict:
+async def _process_message(task, message: str, channel_id: str, requester_slack_id: str, thread_ts: str | None, working_ts: str | None = None) -> dict:
     import structlog
     structlog.contextvars.bind_contextvars(celery_task_id=task.request.id, user=requester_slack_id)
     from sqlalchemy import select as sa_select
@@ -199,6 +200,15 @@ async def _process_message(task, message: str, channel_id: str, requester_slack_
 
         else:
             # General ops agent
+            # Build a progress callback that keeps the "⏳" Slack message live
+            # during long tool chains so users aren't left in silence.
+            async def _progress_callback(text: str) -> None:
+                if working_ts:
+                    try:
+                        await slack.update_message(channel=channel_id, ts=working_ts, text=text)
+                    except Exception as _exc:
+                        log.warning("slack.progress.update.failed", error=str(_exc))
+
             engine = AgentEngine()
             result_obj = await engine.process(
                 message=message,
@@ -207,6 +217,7 @@ async def _process_message(task, message: str, channel_id: str, requester_slack_
                 thread_ts=thread_ts,
                 task_id=str(task_id),
                 requester_role=user.role,
+                progress_callback=_progress_callback,
             )
             await slack.post_message(
                 channel_id,

@@ -143,6 +143,30 @@ class Settings(BaseSettings):
         default=["delete_namespace", "drop_database"]
     )
 
+    # Multi-cluster Kubernetes
+    # Comma-separated kubeconfig context names to expose as separate MCP servers.
+    # When set, tools are namespaced as kubernetes-<ctx>__<tool>.
+    # When empty, a single "kubernetes" server is started using the active context.
+    k8s_contexts: list[str] = Field(default=[])
+
+    # Web dashboard authentication
+    # Set a non-empty secret to require a password on the Next.js dashboard.
+    # Leave empty to skip auth (suitable for local dev behind a firewall).
+    dashboard_secret: str = ""
+
+    # Deployment freeze windows
+    # Comma-separated ISO weekday numbers (0=Mon … 6=Sun) on which DESTRUCTIVE ops
+    # are blocked. Leave empty to disable freeze-window enforcement.
+    freeze_deployment_days: list[int] = Field(default=[])
+    # UTC hour (0–23) at which the freeze starts; -1 = all day on freeze_deployment_days.
+    freeze_deployment_start_utc: int = -1
+    # UTC hour (0–23) at which the freeze ends; supports overnight windows (e.g. start=22, end=6).
+    freeze_deployment_end_utc: int = -1
+    freeze_deployment_message: str = (
+        "Deployment freeze is currently active. "
+        "Contact an admin for emergency overrides."
+    )
+
     # MCP tool execution
     tool_timeout_seconds: int = 30  # per-tool call timeout; prevents slow integrations from stalling workers
 
@@ -165,12 +189,19 @@ class Settings(BaseSettings):
     mcp_jira_command: str = "node /app/mcp-servers/jira-mcp/dist/index.js"
     mcp_confluence_command: str = "node /app/mcp-servers/confluence-mcp/dist/index.js"
 
-    @field_validator("cors_origins", "default_approver_slack_ids", "require_dual_approval_for", mode="before")
+    @field_validator("cors_origins", "default_approver_slack_ids", "require_dual_approval_for", "k8s_contexts", mode="before")
     @classmethod
     def split_comma(cls, v: str | list) -> list[str]:
         if isinstance(v, str):
             return [s.strip() for s in v.split(",") if s.strip()]
         return v
+
+    @field_validator("freeze_deployment_days", mode="before")
+    @classmethod
+    def parse_int_list(cls, v: str | list) -> list[int]:
+        if isinstance(v, str):
+            return [int(p.strip()) for p in v.split(",") if p.strip().lstrip("-").isdigit()]
+        return [int(x) for x in v]
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> Settings:

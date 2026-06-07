@@ -8,7 +8,7 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from opsbot.api.routes import approvals, health, slack, sre, tasks
+from opsbot.api.routes import approvals, auth, health, slack, sre, tasks
 from opsbot.config.settings import get_settings
 from opsbot.mcp.manager import get_manager
 
@@ -81,6 +81,7 @@ def create_app() -> FastAPI:
 
     # Register routers
     app.include_router(health.router)
+    app.include_router(auth.router)
     app.include_router(slack.router)
     app.include_router(tasks.router)
     app.include_router(approvals.router)
