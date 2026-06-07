@@ -82,10 +82,9 @@ def _setup_worker(**kwargs):
 def _teardown_worker(**kwargs):
     global _worker_loop
     if _worker_loop and not _worker_loop.is_closed():
-        try:
+        import contextlib
+        with contextlib.suppress(Exception):
             _worker_loop.run_until_complete(_worker_loop.shutdown_asyncgens())
-        except Exception:
-            pass
         _worker_loop.close()
     log.info("celery.worker.shutdown")
 

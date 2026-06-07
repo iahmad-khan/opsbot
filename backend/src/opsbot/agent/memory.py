@@ -10,9 +10,20 @@ from opsbot.config.settings import get_settings
 
 log = structlog.get_logger(__name__)
 
+# Key prefix bumped to v2 so existing string-typed keys are ignored rather than
+# misread as list items.
+_KEY_PREFIX = "opsbot:conv2"
+
 
 class ConversationMemory:
-    """Redis-backed per-channel conversation memory."""
+    """
+    Redis-backed per-channel conversation memory.
+
+    Each message is stored as an individual JSON string in a Redis list so that
+    appends are atomic (RPUSH) and concurrent tasks for the same channel cannot
+    overwrite each other's messages (the old GET/SET blob pattern had a
+    last-write-wins race).
+    """
 
     def __init__(self, redis_client: aioredis.Redis | None = None) -> None:
         self._redis = redis_client
@@ -28,19 +39,19 @@ class ConversationMemory:
 
     def _key(self, channel_id: str, thread_ts: str | None = None) -> str:
         suffix = f":{thread_ts}" if thread_ts else ""
-        return f"opsbot:conv:{channel_id}{suffix}"
+        return f"{_KEY_PREFIX}:{channel_id}{suffix}"
 
     async def get_history(self, channel_id: str, thread_ts: str | None = None) -> list[dict]:
         r = await self._get_redis()
         key = self._key(channel_id, thread_ts)
-        raw = await r.get(key)
-        if not raw:
-            return []
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            log.warning("memory.corrupted", key=key)
-            return []
+        raw_items = await r.lrange(key, 0, -1)
+        history: list[dict] = []
+        for item in raw_items:
+            try:
+                history.append(json.loads(item))
+            except json.JSONDecodeError:
+                log.warning("memory.item.corrupted", key=key)
+        return history
 
     async def append(
         self,
@@ -48,15 +59,7 @@ class ConversationMemory:
         message: dict,
         thread_ts: str | None = None,
     ) -> list[dict]:
-        r = await self._get_redis()
-        history = await self.get_history(channel_id, thread_ts)
-        history.append(message)
-        # keep only the last N messages
-        if len(history) > self._max_messages:
-            history = history[-self._max_messages:]
-        key = self._key(channel_id, thread_ts)
-        await r.set(key, json.dumps(history), ex=self._ttl)
-        return history
+        return await self.append_many(channel_id, [message], thread_ts)
 
     async def append_many(
         self,
@@ -64,14 +67,18 @@ class ConversationMemory:
         messages: list[dict],
         thread_ts: str | None = None,
     ) -> list[dict]:
+        if not messages:
+            return await self.get_history(channel_id, thread_ts)
         r = await self._get_redis()
-        history = await self.get_history(channel_id, thread_ts)
-        history.extend(messages)
-        if len(history) > self._max_messages:
-            history = history[-self._max_messages:]
         key = self._key(channel_id, thread_ts)
-        await r.set(key, json.dumps(history), ex=self._ttl)
-        return history
+        # Pipeline: push each message, trim to max_messages, refresh TTL
+        async with r.pipeline(transaction=True) as pipe:
+            for msg in messages:
+                pipe.rpush(key, json.dumps(msg))
+            pipe.ltrim(key, -self._max_messages, -1)
+            pipe.expire(key, self._ttl)
+            await pipe.execute()
+        return await self.get_history(channel_id, thread_ts)
 
     async def clear(self, channel_id: str, thread_ts: str | None = None) -> None:
         r = await self._get_redis()

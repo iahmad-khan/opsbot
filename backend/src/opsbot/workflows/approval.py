@@ -57,7 +57,12 @@ class ApprovalWorkflow:
         approval_id: uuid.UUID,
         approver_slack_id: str,
     ) -> Approval:
-        approval = await db.get(Approval, approval_id)
+        # SELECT FOR UPDATE prevents two concurrent approvers from both passing the
+        # status check and triggering double-execution.
+        result = await db.execute(
+            select(Approval).where(Approval.id == approval_id).with_for_update()
+        )
+        approval = result.scalar_one_or_none()
         if not approval:
             raise ValueError(f"Approval {approval_id} not found")
         if approval.status != ApprovalStatus.PENDING:
@@ -109,7 +114,10 @@ class ApprovalWorkflow:
         denier_slack_id: str,
         reason: str = "",
     ) -> Approval:
-        approval = await db.get(Approval, approval_id)
+        result = await db.execute(
+            select(Approval).where(Approval.id == approval_id).with_for_update()
+        )
+        approval = result.scalar_one_or_none()
         if not approval:
             raise ValueError(f"Approval {approval_id} not found")
         if approval.status != ApprovalStatus.PENDING:

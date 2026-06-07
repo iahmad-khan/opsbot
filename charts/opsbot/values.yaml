@@ -2,26 +2,30 @@ replicaCount: 2
 
 image:
   repository: your-registry/opsbot-backend
-  tag: "latest"
+  tag: "0.1.0"
   pullPolicy: IfNotPresent
 
 frontendImage:
   repository: your-registry/opsbot-frontend
-  tag: "latest"
+  tag: "0.1.0"
   pullPolicy: IfNotPresent
 
 workerImage:
   repository: your-registry/opsbot-backend
-  tag: "latest"
+  tag: "0.1.0"
   pullPolicy: IfNotPresent
 
-workerReplicas: 2
+workerReplicas: 3
+
+worker:
+  concurrency: 8  # threads per worker pod; increase if LLM timeouts are short
 
 service:
   type: ClusterIP
   port: 8000
 
 frontend:
+  replicaCount: 2
   service:
     type: ClusterIP
     port: 3000
@@ -92,10 +96,16 @@ postgresql:
 redis:
   enabled: true
   auth:
-    enabled: false
+    enabled: true
+    existingSecret: opsbot-secrets
+    existingSecretPasswordKey: redis-password
   master:
     persistence:
+      enabled: true
       size: 5Gi
+    config: |
+      appendonly yes
+      appendfsync everysec
 
 serviceMonitor:
   enabled: true

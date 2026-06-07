@@ -13,6 +13,10 @@ from opsbot.tools.registry import get_human_description, get_tool_risk
 
 log = structlog.get_logger(__name__)
 
+# Redis key pattern: opsbot:tokens:{user_id}:{YYYY-MM-DD}
+_TOKEN_KEY_PREFIX = "opsbot:tokens"
+_TOKEN_KEY_TTL = 90000  # 25 hours — covers timezone skew
+
 MAX_ITERATIONS = 15
 MAX_MESSAGE_LENGTH = 4000  # chars; guard against prompt injection via oversized messages
 
@@ -52,6 +56,35 @@ class AgentEngine:
     def _system_prompt(self) -> str:
         return SYSTEM_PROMPT.format(today=datetime.now(UTC).strftime("%Y-%m-%d"))
 
+    async def _check_token_budget(self, user_id: str) -> None:
+        from opsbot.config.settings import get_settings
+        s = get_settings()
+        if s.litellm_daily_token_limit <= 0:
+            return
+        r = await self._memory._get_redis()
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        key = f"{_TOKEN_KEY_PREFIX}:{user_id}:{today}"
+        used_raw = await r.get(key)
+        used = int(used_raw) if used_raw else 0
+        if used >= s.litellm_daily_token_limit:
+            log.warning("agent.token_budget.exceeded", user=user_id, used=used, limit=s.litellm_daily_token_limit)
+            raise PermissionError(
+                f"Daily token budget exceeded ({used:,}/{s.litellm_daily_token_limit:,} tokens used). "
+                "Budget resets at midnight UTC."
+            )
+
+    async def _record_token_usage(self, user_id: str, tokens: int) -> None:
+        if tokens <= 0:
+            return
+        try:
+            r = await self._memory._get_redis()
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
+            key = f"{_TOKEN_KEY_PREFIX}:{user_id}:{today}"
+            await r.incrby(key, tokens)
+            await r.expire(key, _TOKEN_KEY_TTL)
+        except Exception as exc:
+            log.warning("agent.token_tracking.failed", error=str(exc))
+
     async def process(
         self,
         message: str,
@@ -66,6 +99,8 @@ class AgentEngine:
         # Guard against oversized/injected messages
         if len(message) > MAX_MESSAGE_LENGTH:
             message = message[:MAX_MESSAGE_LENGTH] + "\n[message truncated]"
+
+        await self._check_token_budget(requester_slack_id)
 
         history = await self._memory.get_history(channel_id, thread_ts)
         initial_length = len(history)
@@ -85,6 +120,7 @@ class AgentEngine:
 
             response_msg = response.to_message()
             history.append(response_msg)
+            await self._record_token_usage(requester_slack_id, response.usage.get("total_tokens", 0))
 
             if not response.tool_calls:
                 # Final answer — save only the messages added this invocation

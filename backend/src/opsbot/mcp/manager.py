@@ -73,9 +73,19 @@ class MCPManager:
         if client is None:
             raise ValueError(f"No MCP server handles tool: {litellm_tool_name}")
 
+        from opsbot.config.settings import get_settings
+        timeout = get_settings().tool_timeout_seconds
+
         # Strip server prefix: "kubernetes__list_pods" → "list_pods"
         _, _, mcp_tool_name = litellm_tool_name.partition("__")
-        return await client.call_tool(mcp_tool_name, arguments)
+        try:
+            return await asyncio.wait_for(
+                client.call_tool(mcp_tool_name, arguments),
+                timeout=timeout,
+            )
+        except TimeoutError:
+            log.error("mcp.tool.timeout", tool=litellm_tool_name, timeout=timeout)
+            raise TimeoutError(f"Tool {litellm_tool_name!r} timed out after {timeout}s") from None
 
     def get_server_status(self) -> dict[str, str]:
         return {

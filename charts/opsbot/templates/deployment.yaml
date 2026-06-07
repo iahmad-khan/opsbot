@@ -21,19 +21,6 @@ spec:
         app.kubernetes.io/component: backend
     spec:
       serviceAccountName: {{ include "opsbot.fullname" . }}
-      initContainers:
-        - name: db-migrate
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["alembic", "upgrade", "head"]
-          env:
-            {{- range $k, $v := .Values.env }}
-            - name: {{ $k }}
-              value: {{ $v | quote }}
-            {{- end }}
-          envFrom:
-            - secretRef:
-                name: {{ .Values.secretName }}
       containers:
         - name: backend
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -142,7 +129,7 @@ metadata:
     {{- include "opsbot.labels" . | nindent 4 }}
     app.kubernetes.io/component: frontend
 spec:
-  replicas: 1
+  replicas: {{ .Values.frontend.replicaCount | default 2 }}
   selector:
     matchLabels:
       {{- include "opsbot.selectorLabels" . | nindent 6 }}

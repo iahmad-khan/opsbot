@@ -45,6 +45,16 @@ def _make_user(slack_id: str, role: str) -> MagicMock:
     return u
 
 
+def _execute_side_effect(*return_values):
+    """Build an AsyncMock that returns a scalar-result mock for each call in order."""
+    mocks = []
+    for val in return_values:
+        m = MagicMock()
+        m.scalar_one_or_none.return_value = val
+        mocks.append(m)
+    return AsyncMock(side_effect=mocks)
+
+
 # ---------------------------------------------------------------------------
 # can_approve() — role check logic
 # ---------------------------------------------------------------------------
@@ -98,13 +108,11 @@ class TestApprove:
         admin_user = _make_user("U_admin", UserRole.ADMIN)
 
         db = AsyncMock()
-        db.get.side_effect = lambda model, pk: task if model is Task else approval if model is Approval else None
-        db.add = MagicMock()  # session.add() is synchronous
-
-        # Mock the User select query
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = admin_user
-        db.execute = AsyncMock(return_value=mock_result)
+        # First execute: SELECT FOR UPDATE for Approval
+        # Second execute: SELECT User for RBAC check
+        db.execute = _execute_side_effect(approval, admin_user)
+        db.get = AsyncMock(return_value=task)
+        db.add = MagicMock()
         db.commit = AsyncMock()
         db.refresh = AsyncMock()
 
@@ -120,11 +128,7 @@ class TestApprove:
         dev_user = _make_user("U_dev", UserRole.DEVELOPER)
 
         db = AsyncMock()
-        db.get.return_value = approval
-
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = dev_user
-        db.execute = AsyncMock(return_value=mock_result)
+        db.execute = _execute_side_effect(approval, dev_user)
 
         with pytest.raises(ValueError, match="does not have permission"):
             await wf.approve(db, approval.id, "U_dev")
@@ -137,10 +141,9 @@ class TestApprove:
         approval.expires_at = datetime.now(UTC) - timedelta(minutes=1)  # already expired
 
         db = AsyncMock()
-        db.get.return_value = approval
+        db.execute = _execute_side_effect(approval)
         db.commit = AsyncMock()
 
-        # No user lookup reached — expires before RBAC check
         with pytest.raises(ValueError, match="expired"):
             await wf.approve(db, approval.id, "U_admin")
 
@@ -149,10 +152,10 @@ class TestApprove:
         wf = ApprovalWorkflow()
         task = _make_task()
         approval = _make_approval(task)
-        approval.status = ApprovalStatus.APPROVED  # already resolved
+        approval.status = ApprovalStatus.APPROVED
 
         db = AsyncMock()
-        db.get.return_value = approval
+        db.execute = _execute_side_effect(approval)
 
         with pytest.raises(ValueError, match="already"):
             await wf.approve(db, approval.id, "U_admin")
@@ -170,8 +173,9 @@ class TestDeny:
         approval = _make_approval(task)
 
         db = AsyncMock()
-        db.get.side_effect = lambda model, pk: approval if model is Approval else task
-        db.add = MagicMock()  # session.add() is synchronous
+        db.execute = _execute_side_effect(approval)
+        db.get = AsyncMock(return_value=task)
+        db.add = MagicMock()
         db.commit = AsyncMock()
         db.refresh = AsyncMock()
 

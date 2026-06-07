@@ -143,6 +143,15 @@ class Settings(BaseSettings):
         default=["delete_namespace", "drop_database"]
     )
 
+    # MCP tool execution
+    tool_timeout_seconds: int = 30  # per-tool call timeout; prevents slow integrations from stalling workers
+
+    # LLM cost guardrails
+    litellm_daily_token_limit: int = 100_000  # per-user daily token budget (0 = unlimited)
+
+    # Audit log retention
+    audit_log_retention_days: int = 90  # rows older than this are purged nightly by beat
+
     # MCP server commands
     mcp_kubernetes_command: str = "npx -y kubernetes-mcp-server@latest"
     mcp_github_command: str = "npx -y @modelcontextprotocol/server-github"

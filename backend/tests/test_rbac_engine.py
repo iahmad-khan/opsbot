@@ -45,6 +45,7 @@ class TestMessageLengthGuard:
         mock_response = MagicMock()
         mock_response.tool_calls = []
         mock_response.content = "ok"
+        mock_response.usage = {"total_tokens": 100}
         mock_response.to_message.return_value = {"role": "assistant", "content": "ok"}
 
         mock_llm = AsyncMock()
@@ -87,6 +88,7 @@ class TestReadonlyRoleBlocked:
         mock_response_with_tool = MagicMock()
         mock_response_with_tool.tool_calls = [tool_call]
         mock_response_with_tool.content = None
+        mock_response_with_tool.usage = {"total_tokens": 200}
         mock_response_with_tool.to_message.return_value = {
             "role": "assistant", "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "k8s_restart_deployment", "arguments": "{}"}}]
         }
@@ -95,6 +97,7 @@ class TestReadonlyRoleBlocked:
         mock_response_final = MagicMock()
         mock_response_final.tool_calls = []
         mock_response_final.content = "Sorry, you don't have permission."
+        mock_response_final.usage = {"total_tokens": 150}
         mock_response_final.to_message.return_value = {"role": "assistant", "content": "Sorry."}
 
         mock_llm = AsyncMock()
@@ -134,6 +137,7 @@ class TestDestructiveRaisesNeedsApproval:
         mock_response = MagicMock()
         mock_response.tool_calls = [tool_call]
         mock_response.content = None
+        mock_response.usage = {"total_tokens": 300}
         mock_response.to_message.return_value = {"role": "assistant", "tool_calls": []}
 
         mock_llm = AsyncMock()
