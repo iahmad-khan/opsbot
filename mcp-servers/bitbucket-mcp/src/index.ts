@@ -224,6 +224,34 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["repo", "username"],
       },
     },
+    {
+      name: "list_tags",
+      description: "List release tags in a Bitbucket repository — for release management, shows available versions",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspace: { type: "string" },
+          repo: { type: "string", description: "Repository slug" },
+          query: { type: "string", description: "Filter tags by name substring" },
+          limit: { type: "number", default: 30 },
+        },
+        required: ["repo"],
+      },
+    },
+    {
+      name: "compare_commits",
+      description: "Show the diff between two branches, tags, or commits in a Bitbucket repository",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workspace: { type: "string" },
+          repo: { type: "string" },
+          from_ref: { type: "string", description: "Base ref (older tag/branch/commit)" },
+          to_ref: { type: "string", description: "Target ref (newer tag/branch/commit)" },
+        },
+        required: ["repo", "from_ref", "to_ref"],
+      },
+    },
   ],
 }));
 
@@ -494,6 +522,48 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           });
         }
         return { content: [{ type: "text", text: `✅ ${username} given ${permission} access to ${ws}/${repo}` }] };
+      }
+
+      case "list_tags": {
+        const repo = String(args!.repo);
+        let tags: any[];
+        if (IS_CLOUD) {
+          const params: Record<string, string> = { pagelen: String(args?.limit || 30) };
+          if (args?.query) params.q = `name~"${args.query}"`;
+          const { data } = await client.get(`${repoPath(ws, repo)}/refs/tags`, { params });
+          tags = (data.values || []).map((t: any) => ({
+            name: t.name,
+            target: t.target?.hash?.substring(0, 12),
+            date: t.target?.date,
+            message: t.message,
+          }));
+        } else {
+          const params: Record<string, string | number> = { limit: Number(args?.limit || 30) };
+          if (args?.query) Object.assign(params, { filterText: args.query });
+          const { data } = await client.get(`${repoPath(ws, repo)}/tags`, { params });
+          tags = (data.values || []).map((t: any) => ({
+            name: t.displayId,
+            target: t.latestCommit?.substring(0, 12),
+            hash: t.hash?.substring(0, 12),
+          }));
+        }
+        return { content: [{ type: "text", text: JSON.stringify({ tags, count: tags.length }, null, 2) }] };
+      }
+
+      case "compare_commits": {
+        const repo = String(args!.repo);
+        // Cloud: GET /repositories/{ws}/{repo}/diff/{from}..{to}
+        // Server: GET /projects/{ws}/repos/{repo}/compare/diff?from={from}&to={to}
+        if (IS_CLOUD) {
+          const spec = `${args!.from_ref}..${args!.to_ref}`;
+          const { data } = await client.get(`${repoPath(ws, repo)}/diff/${spec}`);
+          return { content: [{ type: "text", text: String(data).substring(0, 8000) }] };
+        } else {
+          const { data } = await client.get(`${repoPath(ws, repo)}/compare/diff`, {
+            params: { from: args!.from_ref, to: args!.to_ref },
+          });
+          return { content: [{ type: "text", text: String(data).substring(0, 8000) }] };
+        }
       }
 
       default:

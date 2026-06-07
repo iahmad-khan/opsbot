@@ -13,6 +13,16 @@ from opsbot.mcp.servers import MCPServerConfig
 
 log = structlog.get_logger(__name__)
 
+_SENSITIVE_KEY_FRAGMENTS = frozenset({"token", "password", "secret", "key", "credential", "auth", "api_key"})
+
+
+def _redact_args(args: dict[str, Any]) -> dict[str, Any]:
+    """Replace values whose key names suggest secrets with '***'."""
+    return {
+        k: "***" if any(frag in k.lower() for frag in _SENSITIVE_KEY_FRAGMENTS) else v
+        for k, v in args.items()
+    }
+
 
 class MCPClient:
     """Async stdio MCP client for a single server."""
@@ -66,7 +76,7 @@ class MCPClient:
         if self._session is None:
             await self.connect()
 
-        log.debug("mcp.tool.call", server=self.config.name, tool=tool_name, args=arguments)
+        log.debug("mcp.tool.call", server=self.config.name, tool=tool_name, args=_redact_args(arguments))
         try:
             result = await self._session.call_tool(tool_name, arguments)
             # MCP result content is a list of content items

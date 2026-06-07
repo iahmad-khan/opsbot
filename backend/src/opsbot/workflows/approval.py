@@ -67,6 +67,17 @@ class ApprovalWorkflow:
             await db.commit()
             raise ValueError("Approval has expired")
 
+        # Verify the approver has the required role (admin or sre)
+        from opsbot.models.db import User
+        user_result = await db.execute(select(User).where(User.slack_user_id == approver_slack_id))
+        approver_user = user_result.scalar_one_or_none()
+        approver_role = approver_user.role if approver_user else "developer"
+        if not self.can_approve(approver_role, approval.risk_level):
+            raise ValueError(
+                f"User {approver_slack_id} (role: {approver_role}) does not have permission "
+                f"to approve {approval.risk_level} operations. Required role: admin or sre."
+            )
+
         approval.status = ApprovalStatus.APPROVED
         approval.approver_slack_id = approver_slack_id
         approval.resolved_at = datetime.now(timezone.utc)

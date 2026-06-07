@@ -99,6 +99,28 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["app_name"],
       },
     },
+    {
+      name: "get_rollback_target",
+      description: "Get the recommended rollback target (previous stable revision) for an ArgoCD application",
+      inputSchema: {
+        type: "object",
+        properties: {
+          app_name: { type: "string", description: "ArgoCD application name" },
+        },
+        required: ["app_name"],
+      },
+    },
+    {
+      name: "get_release_status",
+      description: "Get the current deployed revision and images for an ArgoCD app — answers 'what version is in production?'",
+      inputSchema: {
+        type: "object",
+        properties: {
+          app_name: { type: "string", description: "ArgoCD application name" },
+        },
+        required: ["app_name"],
+      },
+    },
   ],
 }));
 
@@ -165,6 +187,69 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const params = { refresh: args?.hard ? "hard" : "normal" };
         await client.get(`/applications/${args!.app_name}`, { params });
         return { content: [{ type: "text", text: `✅ ${args!.app_name} refreshed` }] };
+      }
+
+      case "get_rollback_target": {
+        const { data: app } = await client.get(`/applications/${args!.app_name}`);
+        const currentRevision: string = app.status?.sync?.revision || "";
+        const currentImages: string[] = app.status?.summary?.images || [];
+
+        const { data: histData } = await client.get(`/applications/${args!.app_name}/revisions`);
+        const history: any[] = histData.items || [];
+
+        // Separate current from previous successful revisions
+        const previous = history.filter((h: any) => h.revision !== currentRevision);
+        const rollbackTarget = previous[0];
+
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              app: args!.app_name,
+              current: {
+                revision: currentRevision.substring(0, 12),
+                images: currentImages,
+                syncStatus: app.status?.sync?.status,
+                healthStatus: app.status?.health?.status,
+              },
+              rollback_target: rollbackTarget
+                ? {
+                    revision_id: rollbackTarget.id,
+                    revision: (rollbackTarget.revision || "").substring(0, 12),
+                    deployed_at: rollbackTarget.deployedAt,
+                    initiated_by: rollbackTarget.initiatedBy?.username,
+                    note: `To rollback, use rollback_app with revision_id: ${rollbackTarget.id}`,
+                  }
+                : null,
+              history_depth: history.length,
+            }, null, 2),
+          }],
+        };
+      }
+
+      case "get_release_status": {
+        const { data: app } = await client.get(`/applications/${args!.app_name}`);
+        const { data: histData } = await client.get(`/applications/${args!.app_name}/revisions`);
+        const history: any[] = (histData.items || []).slice(0, 5);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              app: args!.app_name,
+              sync_status: app.status?.sync?.status,
+              health_status: app.status?.health?.status,
+              current_revision: (app.status?.sync?.revision || "").substring(0, 12),
+              images: app.status?.summary?.images || [],
+              destination: app.spec?.destination,
+              recent_deployments: history.map((h: any) => ({
+                id: h.id,
+                revision: (h.revision || "").substring(0, 12),
+                deployed_at: h.deployedAt,
+                initiated_by: h.initiatedBy?.username,
+              })),
+            }, null, 2),
+          }],
+        };
       }
 
       default:

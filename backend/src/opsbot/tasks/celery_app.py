@@ -67,6 +67,9 @@ def process_message_task(
 
 
 async def _process_message(task, message: str, channel_id: str, requester_slack_id: str, thread_ts: str | None) -> dict:
+    import structlog
+    structlog.contextvars.bind_contextvars(celery_task_id=task.request.id, user=requester_slack_id)
+    from sqlalchemy import select as sa_select
     from opsbot.agent.engine import AgentEngine, NeedsApprovalError
     from opsbot.agent.router import detect_intent, Intent
     from opsbot.integrations.slack.client import SlackClient
@@ -81,7 +84,7 @@ async def _process_message(task, message: str, channel_id: str, requester_slack_
     # Get or create user
     async with session_factory() as db:
         user_result = await db.execute(
-            __import__("sqlalchemy", fromlist=["select"]).select(User).where(User.slack_user_id == requester_slack_id)
+            sa_select(User).where(User.slack_user_id == requester_slack_id)
         )
         user = user_result.scalar_one_or_none()
         if not user:

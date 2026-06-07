@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from opsbot.api.routes import approvals, health, slack, sre, tasks
@@ -67,6 +68,16 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Correlation ID middleware — stamps every request with a trace ID
+    @app.middleware("http")
+    async def correlation_id_middleware(request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        structlog.contextvars.bind_contextvars(request_id=request_id)
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        structlog.contextvars.unbind_contextvars("request_id")
+        return response
 
     # Register routers
     app.include_router(health.router)

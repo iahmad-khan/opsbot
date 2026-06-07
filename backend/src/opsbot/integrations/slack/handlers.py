@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import time
 import uuid
 from typing import Any
 
@@ -14,6 +15,32 @@ from opsbot.integrations.slack.formatters import format_agent_response, format_e
 from opsbot.workflows.notification import build_approval_blocks, build_approval_resolved_blocks, build_task_status_blocks
 
 log = structlog.get_logger(__name__)
+
+# Rate limiting: max requests per user per sliding window
+_RATE_LIMIT_MAX = 10
+_RATE_LIMIT_WINDOW = 60  # seconds
+
+
+async def _check_rate_limit(user_id: str) -> bool:
+    """Return True if the user is within rate limits, False if they should be throttled."""
+    try:
+        import redis.asyncio as aioredis
+        s = get_settings()
+        r = aioredis.from_url(s.redis_url)
+        now = time.time()
+        key = f"opsbot:ratelimit:{user_id}"
+        async with r.pipeline(transaction=True) as pipe:
+            pipe.zadd(key, {str(now): now})
+            pipe.zremrangebyscore(key, 0, now - _RATE_LIMIT_WINDOW)
+            pipe.zcard(key)
+            pipe.expire(key, _RATE_LIMIT_WINDOW + 10)
+            results = await pipe.execute()
+        await r.aclose()
+        count: int = results[2]
+        return count <= _RATE_LIMIT_MAX
+    except Exception as e:
+        log.warning("rate_limit.check.failed", error=str(e))
+        return True  # fail open — don't block on Redis errors
 
 # Late imports to avoid circular deps
 _bolt_app: AsyncApp | None = None
@@ -82,6 +109,15 @@ async def _handle_message_event(event: dict, say, client) -> None:
     channel_id = event.get("channel")
     thread_ts = event.get("thread_ts") or event.get("ts")
     requester_slack_id = event.get("user")
+
+    # Rate limit check
+    if requester_slack_id and not await _check_rate_limit(requester_slack_id):
+        await say(
+            text=f"⏸️ Slow down! You've sent too many requests. Please wait a moment before trying again.",
+            thread_ts=thread_ts,
+        )
+        log.warning("slack.rate_limited", user=requester_slack_id)
+        return
 
     # Acknowledge receipt immediately
     await say(
@@ -205,7 +241,23 @@ I'm your AI-powered DevOps & SRE assistant. Just ask me naturally:
 
 
 async def start_socket_mode() -> None:
+    """Start socket mode with automatic reconnect on transient failures."""
+    import asyncio
     s = get_settings()
     app = get_bolt_app()
-    handler = AsyncSocketModeHandler(app, s.slack_app_token)
-    await handler.start_async()
+    retry_delay = 5
+    while True:
+        try:
+            handler = AsyncSocketModeHandler(app, s.slack_app_token)
+            log.info("slack.socket_mode.connecting")
+            await handler.start_async()
+            # start_async() normally blocks; reaching here means it exited cleanly
+        except asyncio.CancelledError:
+            log.info("slack.socket_mode.cancelled")
+            raise
+        except Exception as exc:
+            log.error("slack.socket_mode.error", error=str(exc), retry_in=retry_delay)
+            await asyncio.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, 60)  # exponential back-off, cap at 60s
+        else:
+            retry_delay = 5  # reset on clean exit before reconnecting

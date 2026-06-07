@@ -30,7 +30,11 @@ class ToolCall(dict):
     def args(self) -> dict:
         raw = self["function"].get("arguments", "{}")
         if isinstance(raw, str):
-            return json.loads(raw)
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                log.error("llm.tool_args.invalid_json", raw=raw[:200])
+                return {}
         return raw
 
 

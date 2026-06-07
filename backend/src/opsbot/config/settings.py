@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import warnings
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -70,7 +71,7 @@ class Settings(BaseSettings):
     argocd_insecure: bool = False
 
     # Terraform
-    terraform_working_dir: str = "/tmp/terraform"
+    terraform_working_dir: str = "/app/workdir/terraform"
     tfe_token: str = ""
 
     # AWS
@@ -161,6 +162,21 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [s.strip() for s in v.split(",") if s.strip()]
         return v
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        _default_key = "change-me-in-production"
+        if self.secret_key == _default_key:
+            if self.app_env == "production":
+                raise ValueError(
+                    "SECRET_KEY must be set to a secure random value in production. "
+                    "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+                )
+            warnings.warn(
+                "SECRET_KEY is using the insecure default. Set SECRET_KEY in your .env file.",
+                stacklevel=2,
+            )
+        return self
 
     @property
     def is_production(self) -> bool:

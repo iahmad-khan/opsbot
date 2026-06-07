@@ -17,6 +17,10 @@ from opsbot.tools.registry import get_tool_risk, get_human_description
 log = structlog.get_logger(__name__)
 
 MAX_ITERATIONS = 15
+MAX_MESSAGE_LENGTH = 4000  # chars; guard against prompt injection via oversized messages
+
+# Roles allowed to execute WRITE operations (DESTRUCTIVE always requires approval)
+_WRITE_ALLOWED_ROLES = {"developer", "sre", "admin"}
 
 
 class NeedsApprovalError(Exception):
@@ -61,6 +65,10 @@ class AgentEngine:
     ) -> AgentResult:
         log.info("agent.process", channel=channel_id, user=requester_slack_id, message=message[:80])
 
+        # Guard against oversized/injected messages
+        if len(message) > MAX_MESSAGE_LENGTH:
+            message = message[:MAX_MESSAGE_LENGTH] + "\n[message truncated]"
+
         history = await self._memory.get_history(channel_id, thread_ts)
         history.append({"role": "user", "content": message})
 
@@ -103,6 +111,16 @@ class AgentEngine:
                     await self._memory.append_many(channel_id, history[-len(history):], thread_ts)
                     raise NeedsApprovalError(tool_name, tool_args, description)
 
+                # Enforce WRITE operations are blocked for readonly users
+                if risk == RiskLevel.WRITE and requester_role not in _WRITE_ALLOWED_ROLES:
+                    result_text = (
+                        f"Permission denied: your role ({requester_role}) cannot perform "
+                        f"write operations. Ask an admin or SRE to run this."
+                    )
+                    tool_calls_made.append({"tool": tool_name, "args": tool_args, "success": False, "error": "permission_denied"})
+                    tool_result_messages.append(self._llm.build_tool_result_message(tc.id, result_text))
+                    continue
+
                 # Execute the tool
                 try:
                     result_text = await self._mcp.call_tool(tool_name, tool_args)
@@ -113,9 +131,10 @@ class AgentEngine:
                         "success": True,
                     })
                 except Exception as exc:
-                    result_text = f"Error executing {tool_name}: {exc}"
-                    tool_calls_made.append({"tool": tool_name, "args": tool_args, "success": False, "error": str(exc)})
                     log.error("agent.tool_error", tool=tool_name, error=str(exc))
+                    # Don't leak internal error details to the LLM response
+                    result_text = f"Tool {tool_name} failed. Check logs for details."
+                    tool_calls_made.append({"tool": tool_name, "args": tool_args, "success": False, "error": str(exc)})
 
                 tool_result_messages.append(
                     self._llm.build_tool_result_message(tc.id, result_text)

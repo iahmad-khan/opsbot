@@ -136,6 +136,34 @@ TOOL_RISK_MAP: dict[str, str] = {
     "get_log_field_values": RiskLevel.READ,
     "list_indices": RiskLevel.READ,
 
+    # ArgoCD release management (new tools)
+    "argocd_get_rollback_target": RiskLevel.READ,
+    "argocd_get_release_status": RiskLevel.READ,
+    "get_rollback_target": RiskLevel.READ,
+    "get_release_status": RiskLevel.READ,
+
+    # GitLab release management (new tools)
+    "gitlab_compare_refs": RiskLevel.READ,
+    "gitlab_get_commit_log": RiskLevel.READ,
+    "compare_refs": RiskLevel.READ,
+    "get_commit_log": RiskLevel.READ,
+
+    # Bitbucket release management (new tools)
+    "bitbucket_list_tags": RiskLevel.READ,
+    "bitbucket_compare_commits": RiskLevel.READ,
+    "list_tags": RiskLevel.READ,
+    "compare_commits": RiskLevel.READ,
+
+    # Python release_manager direct tools
+    "release_get_status": RiskLevel.READ,
+    "release_get_rollback_target": RiskLevel.READ,
+    "release_get_available": RiskLevel.READ,
+    "release_get_diff": RiskLevel.READ,
+    "release_get_history": RiskLevel.READ,
+    "release_compare_environments": RiskLevel.READ,
+    "release_get_stale_services": RiskLevel.READ,
+    "release_get_promotion_plan": RiskLevel.READ,
+
     # === WRITE ===
     "k8s_restart_deployment": RiskLevel.WRITE,
     "k8s_scale_deployment": RiskLevel.WRITE,
@@ -190,6 +218,8 @@ def get_human_description(tool_name: str, args: dict) -> str:
         "k8s_drain_node": lambda a: f"Drain node `{a.get('node_name')}` (evicts all pods)",
         "argocd_sync": lambda a: f"Sync ArgoCD application `{a.get('app_name')}`",
         "argocd_rollback": lambda a: f"Rollback ArgoCD application `{a.get('app_name')}` to revision `{a.get('revision', 'previous')}`",
+        "rollback_app": lambda a: f"Rollback ArgoCD application `{a.get('app_name')}` to revision ID {a.get('revision_id')}",
+        "sync_app": lambda a: f"Sync ArgoCD application `{a.get('app_name')}`{' (dry run)' if a.get('dry_run') else ''}",
         "terraform_apply": lambda a: f"Terraform apply in workspace `{a.get('workspace', 'default')}` ({a.get('plan_file', 'latest plan')})",
         "terraform_destroy": lambda a: f"⚠️ TERRAFORM DESTROY in workspace `{a.get('workspace', 'default')}`",
         "github_add_member": lambda a: f"Add `{a.get('username')}` to GitHub repo `{a.get('repo')}` with `{a.get('permission', 'read')}` access",

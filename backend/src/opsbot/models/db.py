@@ -158,7 +158,11 @@ class AuditLog(Base):
     risk_level: Mapped[str | None] = mapped_column(String(32), nullable=True)
     success: Mapped[bool] = mapped_column(Boolean, nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Release management tracking
+    environment: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    service_name: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
+    image_tag: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    extra: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     task: Mapped["Task | None"] = relationship("Task", back_populates="audit_logs", lazy="select")

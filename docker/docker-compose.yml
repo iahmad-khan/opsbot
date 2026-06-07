@@ -19,7 +19,8 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    # Dev password — change REDIS_URL in .env to include it: redis://:devpassword@redis:6379/0
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass devpassword
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -37,9 +38,9 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://opsbot:opsbot@postgres:5432/opsbot
       DATABASE_URL_SYNC: postgresql://opsbot:opsbot@postgres:5432/opsbot
-      REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/1
-      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      REDIS_URL: redis://:devpassword@redis:6379/0
+      CELERY_BROKER_URL: redis://:devpassword@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:devpassword@redis:6379/2
     depends_on:
       postgres:
         condition: service_healthy
@@ -64,9 +65,9 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://opsbot:opsbot@postgres:5432/opsbot
       DATABASE_URL_SYNC: postgresql://opsbot:opsbot@postgres:5432/opsbot
-      REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/1
-      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      REDIS_URL: redis://:devpassword@redis:6379/0
+      CELERY_BROKER_URL: redis://:devpassword@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:devpassword@redis:6379/2
     depends_on:
       postgres:
         condition: service_healthy
@@ -85,9 +86,9 @@ services:
       - ../.env
     environment:
       DATABASE_URL: postgresql+asyncpg://opsbot:opsbot@postgres:5432/opsbot
-      REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/1
-      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      REDIS_URL: redis://:devpassword@redis:6379/0
+      CELERY_BROKER_URL: redis://:devpassword@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:devpassword@redis:6379/2
     depends_on:
       - redis
     volumes:

@@ -21,6 +21,19 @@ spec:
         app.kubernetes.io/component: backend
     spec:
       serviceAccountName: {{ include "opsbot.fullname" . }}
+      initContainers:
+        - name: db-migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["alembic", "upgrade", "head"]
+          env:
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secretName }}
       containers:
         - name: backend
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -86,7 +99,7 @@ spec:
             - opsbot.tasks.celery_app:celery_app
             - worker
             - --loglevel=info
-            - --concurrency=4
+            - --concurrency={{ .Values.worker.concurrency | default 4 }}
             - -Q
             - default,approvals,sre
           env:
@@ -97,6 +110,18 @@ spec:
           envFrom:
             - secretRef:
                 name: {{ .Values.secretName }}
+          livenessProbe:
+            exec:
+              command: ["celery", "-A", "opsbot.tasks.celery_app:celery_app", "inspect", "ping", "--timeout", "5"]
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["celery", "-A", "opsbot.tasks.celery_app:celery_app", "inspect", "ping", "--timeout", "5"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 2
           resources:
             {{- toYaml .Values.resources.worker | nindent 12 }}
           volumeMounts:

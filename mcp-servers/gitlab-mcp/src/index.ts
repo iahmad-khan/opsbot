@@ -323,6 +323,34 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["project", "tag_name", "ref"],
       },
     },
+    {
+      name: "compare_refs",
+      description: "Compare two branches, tags, or commits in a GitLab project — shows commits and diffs between them. Use for release diffs like 'what changed between v1.2.3 and v1.2.4?'",
+      inputSchema: {
+        type: "object",
+        properties: {
+          project: { type: "string", description: "Project path (e.g. 'group/repo')" },
+          from_ref: { type: "string", description: "Base ref (older tag/branch/commit)" },
+          to_ref: { type: "string", description: "Target ref (newer tag/branch/commit)" },
+          straight: { type: "boolean", description: "Use straight comparison (default: false for merge-base)" },
+        },
+        required: ["project", "from_ref", "to_ref"],
+      },
+    },
+    {
+      name: "get_commit_log",
+      description: "Get recent commits for a branch or tag — shows what's been added since a ref",
+      inputSchema: {
+        type: "object",
+        properties: {
+          project: { type: "string" },
+          ref_name: { type: "string", description: "Branch, tag, or commit SHA (default: default branch)" },
+          since: { type: "string", description: "Only show commits after this date (ISO 8601)" },
+          limit: { type: "number", default: 20 },
+        },
+        required: ["project"],
+      },
+    },
   ],
 }));
 
@@ -643,6 +671,60 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (args?.release_description) body.release_description = args.release_description;
         const { data } = await client.post(`/projects/${project}/repository/tags`, body);
         return { content: [{ type: "text", text: `✅ Tag "${data.name}" created at ${data.commit?.short_id}` }] };
+      }
+
+      case "compare_refs": {
+        const project = encodeProject(String(args!.project));
+        const params: Record<string, any> = {
+          from: String(args!.from_ref),
+          to: String(args!.to_ref),
+          straight: args?.straight ? "true" : "false",
+        };
+        const { data } = await client.get(`/projects/${project}/repository/compare`, { params });
+        const commits = (data.commits || []).slice(0, 30).map((c: any) => ({
+          sha: c.short_id,
+          message: c.title,
+          author: c.author_name,
+          date: c.authored_date,
+        }));
+        const diffs = (data.diffs || []).slice(0, 20).map((d: any) => ({
+          file: d.new_path || d.old_path,
+          status: d.new_file ? "added" : d.deleted_file ? "deleted" : "modified",
+          additions: d.diff?.split("\n").filter((l: string) => l.startsWith("+")).length || 0,
+          deletions: d.diff?.split("\n").filter((l: string) => l.startsWith("-")).length || 0,
+        }));
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              project: args!.project,
+              from: args!.from_ref,
+              to: args!.to_ref,
+              total_commits: data.commits?.length || 0,
+              commits,
+              files_changed: diffs,
+              compare_url: `${GITLAB_URL}/${args!.project}/-/compare/${args!.from_ref}...${args!.to_ref}`,
+            }, null, 2),
+          }],
+        };
+      }
+
+      case "get_commit_log": {
+        const project = encodeProject(String(args!.project));
+        const params: Record<string, any> = {
+          per_page: Number(args?.limit || 20),
+          ref_name: String(args?.ref_name || "HEAD"),
+        };
+        if (args?.since) params.since = args.since;
+        const { data } = await client.get(`/projects/${project}/repository/commits`, { params });
+        const commits = data.map((c: any) => ({
+          sha: c.short_id,
+          message: c.title,
+          author: c.author_name,
+          date: c.authored_date,
+          web_url: c.web_url,
+        }));
+        return { content: [{ type: "text", text: JSON.stringify({ commits, count: commits.length }, null, 2) }] };
       }
 
       default:
