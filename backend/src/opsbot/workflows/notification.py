@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from datetime import UTC
 
 from opsbot.models.db import Approval, RiskLevel
-
 
 RISK_EMOJIS = {
     RiskLevel.READ: "📖",
@@ -23,7 +22,6 @@ def build_approval_blocks(approval: Approval, requester_name: str = "") -> list[
     """Build Slack Block Kit blocks for an approval request."""
     risk = approval.risk_level
     emoji = RISK_EMOJIS.get(risk, "❓")
-    color = RISK_COLORS.get(risk, "#888888")
 
     blocks: list[dict] = [
         {
@@ -164,8 +162,8 @@ def build_sre_report_blocks(title: str, content: str, pr_url: str | None = None)
 def _format_expires(approval: Approval) -> str:
     if not approval.expires_at:
         return "Never"
-    from datetime import datetime, timezone
-    remaining = approval.expires_at - datetime.now(timezone.utc)
+    from datetime import datetime
+    remaining = approval.expires_at - datetime.now(UTC)
     minutes = int(remaining.total_seconds() / 60)
     if minutes <= 0:
         return "Expired"

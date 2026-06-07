@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import structlog
@@ -58,7 +58,7 @@ class GrafanaTools:
     ) -> dict:
         payload: dict = {
             "text": text,
-            "time": int(datetime.now(timezone.utc).timestamp() * 1000),
+            "time": int(datetime.now(UTC).timestamp() * 1000),
             "tags": tags or ["opsbot"],
         }
         if dashboard_id:

@@ -18,9 +18,7 @@ Data is gathered from:
 """
 from __future__ import annotations
 
-import re
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import structlog
@@ -93,7 +91,8 @@ class ReleaseManager:
 
         # Kubernetes — scan all namespaces (or the specified one)
         try:
-            from kubernetes_asyncio import client as k8s_client, config as k8s_config
+            from kubernetes_asyncio import client as k8s_client
+            from kubernetes_asyncio import config as k8s_config
             try:
                 k8s_config.load_incluster_config()
             except Exception:
@@ -160,8 +159,9 @@ class ReleaseManager:
 
         # AuditLog — last known deployment by the bot
         try:
+            from sqlalchemy import desc, select
+
             from opsbot.models.db import AuditLog, make_session_factory
-            from sqlalchemy import select, desc
             factory = make_session_factory()
             async with factory() as db:
                 q = (
@@ -250,8 +250,9 @@ class ReleaseManager:
 
         # AuditLog — last two successful deploys, second one is the rollback target
         try:
+            from sqlalchemy import desc, select
+
             from opsbot.models.db import AuditLog, make_session_factory
-            from sqlalchemy import select, desc
             factory = make_session_factory()
             async with factory() as db:
                 q = (
@@ -475,8 +476,9 @@ class ReleaseManager:
     ) -> dict:
         """Return the last N deployments for a service from the AuditLog."""
         try:
+            from sqlalchemy import desc, or_, select
+
             from opsbot.models.db import AuditLog, make_session_factory
-            from sqlalchemy import select, desc, or_
             factory = make_session_factory()
             async with factory() as db:
                 q = (
@@ -570,10 +572,11 @@ class ReleaseManager:
         Uses AuditLog deployment records.
         """
         try:
+            from sqlalchemy import desc, func, select
+
             from opsbot.models.db import AuditLog, make_session_factory
-            from sqlalchemy import select, func, desc
             factory = make_session_factory()
-            cutoff = datetime.now(timezone.utc) - timedelta(days=threshold_days)
+            cutoff = datetime.now(UTC) - timedelta(days=threshold_days)
 
             async with factory() as db:
                 q = (
@@ -598,7 +601,7 @@ class ReleaseManager:
                     "environment": r.environment,
                     "current_tag": r.image_tag,
                     "last_deployed_at": r.last_deployed_at.isoformat() if r.last_deployed_at else None,
-                    "days_since_deploy": (datetime.now(timezone.utc) - r.last_deployed_at).days
+                    "days_since_deploy": (datetime.now(UTC) - r.last_deployed_at).days
                     if r.last_deployed_at
                     else None,
                 }

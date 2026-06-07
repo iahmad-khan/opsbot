@@ -36,6 +36,7 @@ async def health() -> HealthResponse:
     # PostgreSQL
     try:
         from sqlalchemy import text
+
         from opsbot.models.db import make_engine
         engine = make_engine()
         async with engine.connect() as conn:
@@ -91,6 +92,7 @@ async def ready() -> dict:
 
     try:
         from sqlalchemy import text
+
         from opsbot.models.db import make_engine
         engine = make_engine()
         async with engine.connect() as conn:

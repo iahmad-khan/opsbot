@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC
 from typing import Any
 
 import structlog
 from kubernetes_asyncio import client, config
-from kubernetes_asyncio.client import ApiException
 
 from opsbot.config.settings import get_settings
 
@@ -144,11 +144,11 @@ class KubernetesTools:
             return {"deployment": deployment, "namespace": namespace, "status": "rollback_initiated"}
 
     async def restart_deployment(self, deployment: str, namespace: str = "default") -> dict:
-        from datetime import datetime, timezone
+        from datetime import datetime
         await _load_kube_config()
         async with client.ApiClient() as api_client:
             apps_v1 = client.AppsV1Api(api_client)
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(UTC).isoformat()
             body = {
                 "spec": {
                     "template": {

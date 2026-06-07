@@ -7,7 +7,6 @@ import pytest
 
 from opsbot.tools.release_manager import ReleaseManager, _parse_image_tag
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -81,7 +80,6 @@ class TestGetReleaseDiff:
             ],
         }
 
-        import httpx
         with patch("opsbot.tools.release_manager.get_settings") as mock_settings, \
              patch("httpx.AsyncClient") as mock_client_class:
             mock_settings.return_value.github_token = "ghp_test"

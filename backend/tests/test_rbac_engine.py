@@ -8,7 +8,7 @@ import pytest
 
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-unit-tests")
 
-from opsbot.agent.engine import AgentEngine, AgentResult, NeedsApprovalError, _WRITE_ALLOWED_ROLES
+from opsbot.agent.engine import _WRITE_ALLOWED_ROLES, AgentEngine, NeedsApprovalError
 from opsbot.models.db import RiskLevel
 
 

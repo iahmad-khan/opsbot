@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import structlog
 import boto3
+import structlog
 
 from opsbot.config.settings import get_settings
 

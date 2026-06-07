@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import structlog
-from github import Auth, Github, GithubException
+from github import Auth, Github
 
 from opsbot.config.settings import get_settings
 
@@ -116,7 +116,6 @@ class GitHubTools:
         }
 
     def create_file(self, repo: str, path: str, content: str, message: str, branch: str = "main", org: str | None = None) -> dict:
-        import base64
         s = get_settings()
         g = _gh_client()
         org_name = org or s.github_org

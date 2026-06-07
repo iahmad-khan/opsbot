@@ -164,7 +164,7 @@ class Settings(BaseSettings):
         return v
 
     @model_validator(mode="after")
-    def validate_production_secrets(self) -> "Settings":
+    def validate_production_secrets(self) -> Settings:
         _default_key = "change-me-in-production"
         if self.secret_key == _default_key:
             if self.app_env == "production":

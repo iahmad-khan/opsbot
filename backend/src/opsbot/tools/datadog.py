@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
 from datadog_api_client import ApiClient, Configuration
 from datadog_api_client.v1.api.metrics_api import MetricsApi
-from datadog_api_client.v2.api.logs_api import LogsApi
 from datadog_api_client.v1.api.monitors_api import MonitorsApi
+from datadog_api_client.v2.api.logs_api import LogsApi
 
 from opsbot.config.settings import get_settings
 
@@ -25,7 +25,7 @@ def _config() -> Configuration:
 
 class DatadogTools:
     def query_metrics(self, query: str, from_ts: int | None = None, to_ts: int | None = None) -> dict:
-        now = int(datetime.now(timezone.utc).timestamp())
+        now = int(datetime.now(UTC).timestamp())
         with ApiClient(_config()) as api_client:
             api = MetricsApi(api_client)
             result = api.query_metrics(
@@ -54,7 +54,7 @@ class DatadogTools:
         from datadog_api_client.v2.model.logs_query_filter import LogsQueryFilter
         from datadog_api_client.v2.model.logs_sort import LogsSort
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         body = LogsListRequest(
             filter=LogsQueryFilter(
                 query=query,

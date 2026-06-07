@@ -10,7 +10,7 @@ from opsbot.mcp.servers import MCPServerConfig, get_server_configs
 
 log = structlog.get_logger(__name__)
 
-_manager: "MCPManager | None" = None
+_manager: MCPManager | None = None
 
 
 class MCPManager:
@@ -34,7 +34,7 @@ class MCPManager:
             connect_tasks.append(self._connect_one(client))
 
         results = await asyncio.gather(*connect_tasks, return_exceptions=True)
-        for cfg, result in zip(configs, results):
+        for cfg, result in zip(configs, results, strict=False):
             if isinstance(result, Exception):
                 log.warning("mcp.server.unavailable", server=cfg.name, error=str(result))
             else:

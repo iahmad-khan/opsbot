@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import Any
+from datetime import UTC
 
 import structlog
 from celery import Celery
@@ -70,11 +70,15 @@ async def _process_message(task, message: str, channel_id: str, requester_slack_
     import structlog
     structlog.contextvars.bind_contextvars(celery_task_id=task.request.id, user=requester_slack_id)
     from sqlalchemy import select as sa_select
+
     from opsbot.agent.engine import AgentEngine, NeedsApprovalError
-    from opsbot.agent.router import detect_intent, Intent
+    from opsbot.agent.router import Intent, detect_intent
     from opsbot.integrations.slack.client import SlackClient
-    from opsbot.integrations.slack.formatters import format_agent_response, format_rca_report, format_slo_proposal
-    from opsbot.models.db import make_session_factory, Task, TaskStatus, AuditLog, User, UserRole
+    from opsbot.integrations.slack.formatters import (
+        format_rca_report,
+        format_slo_proposal,
+    )
+    from opsbot.models.db import AuditLog, Task, TaskStatus, User, UserRole, make_session_factory
     from opsbot.workflows.approval import ApprovalWorkflow
     from opsbot.workflows.notification import build_approval_blocks
 
@@ -157,9 +161,9 @@ async def _process_message(task, message: str, channel_id: str, requester_slack_
         async with session_factory() as db:
             t = await db.get(Task, task_id)
             if t:
-                from datetime import datetime, timezone
+                from datetime import datetime
                 t.status = TaskStatus.COMPLETED
-                t.completed_at = datetime.now(timezone.utc)
+                t.completed_at = datetime.now(UTC)
                 db.add(AuditLog(
                     task_id=task_id,
                     actor_slack_id=requester_slack_id,
@@ -192,6 +196,7 @@ async def _process_message(task, message: str, channel_id: str, requester_slack_
 
         async with session_factory() as db:
             from sqlalchemy import select as sa_select
+
             from opsbot.models.db import Approval
             a = await db.get(Approval, approval_id)
             if a:
@@ -239,7 +244,7 @@ async def _process_approval(
 ) -> dict:
     from opsbot.agent.engine import AgentEngine
     from opsbot.integrations.slack.client import SlackClient
-    from opsbot.models.db import make_session_factory, Approval, Task
+    from opsbot.models.db import Task, make_session_factory
     from opsbot.workflows.approval import ApprovalWorkflow
 
     slack = SlackClient()
@@ -272,12 +277,13 @@ async def _process_approval(
             await slack.post_message(channel_id, text=result_obj.content, thread_ts=thread_ts)
 
         async with session_factory() as db:
-            from datetime import datetime, timezone
+            from datetime import datetime
+
             from opsbot.models.db import AuditLog, TaskStatus
             t = await db.get(Task, approval.task_id)
             if t:
                 t.status = TaskStatus.COMPLETED
-                t.completed_at = datetime.now(timezone.utc)
+                t.completed_at = datetime.now(UTC)
                 db.add(AuditLog(
                     task_id=approval.task_id,
                     actor_slack_id=approval.tool_name,
@@ -315,8 +321,8 @@ def run_slo_analysis_task(
 async def _run_slo_analysis(service_name, namespace, lookback_days, requester_slack_id, channel_id, thread_ts, create_pr, target_repo):
     from opsbot.integrations.slack.client import SlackClient
     from opsbot.integrations.slack.formatters import format_slo_proposal
-    from opsbot.sre.slo_analyzer import SLOAnalyzer
     from opsbot.sre.fix_generator import FixGenerator
+    from opsbot.sre.slo_analyzer import SLOAnalyzer
 
     slack = SlackClient()
     analyzer = SLOAnalyzer()

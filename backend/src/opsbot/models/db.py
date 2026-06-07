@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from enum import Enum
-from typing import Any
+from enum import StrEnum
 
 from sqlalchemy import (
     JSON,
@@ -15,7 +14,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.ext.asyncio import AsyncAttrs, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncAttrs, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from opsbot.config.settings import get_settings
@@ -43,13 +42,13 @@ def make_session_factory(engine=None):
 
 # ---- Enums ----
 
-class RiskLevel(str, Enum):
+class RiskLevel(StrEnum):
     READ = "READ"
     WRITE = "WRITE"
     DESTRUCTIVE = "DESTRUCTIVE"
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     WAITING_APPROVAL = "waiting_approval"
@@ -60,14 +59,14 @@ class TaskStatus(str, Enum):
     TIMED_OUT = "timed_out"
 
 
-class ApprovalStatus(str, Enum):
+class ApprovalStatus(StrEnum):
     PENDING = "pending"
     APPROVED = "approved"
     DENIED = "denied"
     TIMED_OUT = "timed_out"
 
 
-class UserRole(str, Enum):
+class UserRole(StrEnum):
     ADMIN = "admin"
     SRE = "sre"
     DEVELOPER = "developer"
@@ -90,8 +89,8 @@ class User(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    tasks: Mapped[list["Task"]] = relationship("Task", back_populates="requester", lazy="select")
-    approvals_given: Mapped[list["Approval"]] = relationship("Approval", back_populates="approver", lazy="select")
+    tasks: Mapped[list[Task]] = relationship("Task", back_populates="requester", lazy="select")
+    approvals_given: Mapped[list[Approval]] = relationship("Approval", back_populates="approver", lazy="select")
 
 
 class Task(Base):
@@ -117,9 +116,9 @@ class Task(Base):
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    requester: Mapped["User"] = relationship("User", back_populates="tasks", lazy="select")
-    approval: Mapped["Approval | None"] = relationship("Approval", back_populates="task", uselist=False, lazy="select")
-    audit_logs: Mapped[list["AuditLog"]] = relationship("AuditLog", back_populates="task", lazy="select")
+    requester: Mapped[User] = relationship("User", back_populates="tasks", lazy="select")
+    approval: Mapped[Approval | None] = relationship("Approval", back_populates="task", uselist=False, lazy="select")
+    audit_logs: Mapped[list[AuditLog]] = relationship("AuditLog", back_populates="task", lazy="select")
 
 
 class Approval(Base):
@@ -141,8 +140,8 @@ class Approval(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    task: Mapped["Task"] = relationship("Task", back_populates="approval", lazy="select")
-    approver: Mapped["User | None"] = relationship("User", back_populates="approvals_given", lazy="select")
+    task: Mapped[Task] = relationship("Task", back_populates="approval", lazy="select")
+    approver: Mapped[User | None] = relationship("User", back_populates="approvals_given", lazy="select")
 
 
 class AuditLog(Base):
@@ -165,7 +164,7 @@ class AuditLog(Base):
     extra: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
-    task: Mapped["Task | None"] = relationship("Task", back_populates="audit_logs", lazy="select")
+    task: Mapped[Task | None] = relationship("Task", back_populates="audit_logs", lazy="select")
 
 
 class SLOReport(Base):

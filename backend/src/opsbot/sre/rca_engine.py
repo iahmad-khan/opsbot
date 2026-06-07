@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -31,7 +31,7 @@ class RCAEngine:
     ) -> dict[str, Any]:
         log.info("rca.analyze.start", service=service_name, incident=incident_description[:100])
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         end = end_time or now
         start = start_time or (end - timedelta(hours=3))
 

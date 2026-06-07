@@ -1,7 +1,6 @@
 """Tests for the Slack rate limiter."""
 from __future__ import annotations
 
-import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -34,7 +33,7 @@ class TestRateLimit:
     @pytest.mark.asyncio
     async def test_over_limit_returns_false(self):
         """Exceeding rate limit should be rejected."""
-        from opsbot.integrations.slack.handlers import _check_rate_limit, _RATE_LIMIT_MAX
+        from opsbot.integrations.slack.handlers import _RATE_LIMIT_MAX, _check_rate_limit
 
         mock_results = [None, None, _RATE_LIMIT_MAX + 1, None]  # over limit
 

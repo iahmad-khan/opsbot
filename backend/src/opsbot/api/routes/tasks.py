@@ -67,7 +67,7 @@ async def get_task_audit(task_id: uuid.UUID, db: AsyncSession = Depends(get_db))
     )
     logs = list(result.scalars().all())
     return AuditLogListResponse(
-        items=[AuditLogRead.model_validate(l) for l in logs],
+        items=[AuditLogRead.model_validate(entry) for entry in logs],
         total=len(logs),
     )
 
@@ -93,6 +93,6 @@ async def list_audit_logs(
     logs = list(result.scalars().all())
 
     return AuditLogListResponse(
-        items=[AuditLogRead.model_validate(l) for l in logs],
+        items=[AuditLogRead.model_validate(entry) for entry in logs],
         total=total,
     )

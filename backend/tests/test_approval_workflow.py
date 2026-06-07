@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from opsbot.models.db import Approval, ApprovalStatus, Task, TaskStatus, UserRole
 from opsbot.workflows.approval import ApprovalWorkflow
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -35,7 +34,7 @@ def _make_approval(task: Task, risk_level: str = "DESTRUCTIVE") -> Approval:
     a.tool_args = {"deployment": "checkout", "image": "checkout:v2.0.0"}
     a.description = "Deploy checkout:v2.0.0"
     a.requester_slack_id = "U_dev"
-    a.expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+    a.expires_at = datetime.now(UTC) + timedelta(minutes=30)
     return a
 
 
@@ -135,7 +134,7 @@ class TestApprove:
         wf = ApprovalWorkflow()
         task = _make_task()
         approval = _make_approval(task)
-        approval.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)  # already expired
+        approval.expires_at = datetime.now(UTC) - timedelta(minutes=1)  # already expired
 
         db = AsyncMock()
         db.get.return_value = approval
@@ -191,7 +190,7 @@ class TestExpireApprovals:
         wf = ApprovalWorkflow()
         task = _make_task()
         approval = _make_approval(task)
-        approval.expires_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+        approval.expires_at = datetime.now(UTC) - timedelta(minutes=5)
 
         mock_scalars = MagicMock()
         mock_scalars.all.return_value = [approval]

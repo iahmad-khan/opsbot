@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -112,8 +112,7 @@ class PrometheusTools:
         comment: str = "Silenced by OpsBot",
         author: str = "opsbot",
     ) -> dict:
-        from datetime import timezone
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         payload = {
             "matchers": matchers,
             "startsAt": now.isoformat(),

@@ -33,7 +33,8 @@ class FixGenerator:
         file_contents = []
         for f in affected_files:
             try:
-                from github import Github, Auth
+                from github import Auth, Github
+
                 from opsbot.config.settings import get_settings
                 s = get_settings()
                 g = Github(auth=Auth.Token(s.github_token))
@@ -89,9 +90,11 @@ class FixGenerator:
         return result
 
     async def _create_fix_pr(self, repo: str, fix_plan: dict, base_branch: str) -> str:
-        from github import Github, Auth
-        from opsbot.config.settings import get_settings
         import time
+
+        from github import Auth, Github
+
+        from opsbot.config.settings import get_settings
 
         s = get_settings()
         g = Github(auth=Auth.Token(s.github_token))

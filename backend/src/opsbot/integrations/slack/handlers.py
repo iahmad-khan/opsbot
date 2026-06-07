@@ -3,16 +3,13 @@ from __future__ import annotations
 import re
 import time
 import uuid
-from typing import Any
 
 import structlog
-from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
+from slack_bolt.async_app import AsyncApp
 
 from opsbot.config.settings import get_settings
 from opsbot.integrations.slack.client import SlackClient
-from opsbot.integrations.slack.formatters import format_agent_response, format_error
-from opsbot.workflows.notification import build_approval_blocks, build_approval_resolved_blocks, build_task_status_blocks
 
 log = structlog.get_logger(__name__)
 
@@ -78,7 +75,6 @@ def _register_handlers(app: AsyncApp) -> None:
     @app.action("approval_deny")
     async def handle_deny(ack, body, client) -> None:
         await ack()
-        approval_id = body["actions"][0]["value"]
         reason = ""  # Could open a modal to collect reason
         await _handle_approval_action(body, client, approved=False, reason=reason)
 
@@ -113,7 +109,7 @@ async def _handle_message_event(event: dict, say, client) -> None:
     # Rate limit check
     if requester_slack_id and not await _check_rate_limit(requester_slack_id):
         await say(
-            text=f"⏸️ Slow down! You've sent too many requests. Please wait a moment before trying again.",
+            text="⏸️ Slow down! You've sent too many requests. Please wait a moment before trying again.",
             thread_ts=thread_ts,
         )
         log.warning("slack.rate_limited", user=requester_slack_id)

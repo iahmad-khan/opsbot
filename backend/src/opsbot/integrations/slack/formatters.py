@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 import textwrap
-from typing import Any
 
 # Max chars for a single Slack text block
 MAX_BLOCK_TEXT = 2900
@@ -79,14 +77,14 @@ def format_deployments_table(deployments: list[dict]) -> str:
 
 def format_rca_report(rca: dict) -> str:
     lines = [
-        f"🔬 *Root Cause Analysis*",
-        f"",
+        "🔬 *Root Cause Analysis*",
+        "",
         f"*Root Cause*: {rca.get('root_cause', 'Unknown')}",
         f"*Confidence*: {int(rca.get('confidence', 0) * 100)}%",
-        f"",
-        f"*Summary*",
+        "",
+        "*Summary*",
         rca.get('summary', ''),
-        f"",
+        "",
     ]
 
     factors = rca.get("contributing_factors", [])
@@ -116,16 +114,16 @@ def format_rca_report(rca: dict) -> str:
 def format_slo_proposal(slo_data: dict) -> str:
     lines = [
         f"📊 *SLO Proposal for {slo_data.get('service_name', 'Service')}*",
-        f"",
+        "",
         slo_data.get("analysis_summary", ""),
-        f"",
+        "",
         "*Proposed SLOs*",
     ]
     for slo in slo_data.get("proposed_slos", []):
         target_pct = f"{slo.get('target', 0) * 100:.3f}%"
         current_pct = f"{slo.get('current_performance', 0) * 100:.3f}%"
         lines.extend([
-            f"",
+            "",
             f"*{slo.get('name', 'SLO').title()}*",
             f"• Target: `{target_pct}` | Current: `{current_pct}`",
             f"• SLI: `{slo.get('sli_description', '')}`",

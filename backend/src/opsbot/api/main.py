@@ -40,10 +40,9 @@ async def lifespan(app: FastAPI):
     # Cleanup
     if slack_task:
         slack_task.cancel()
-        try:
+        import contextlib
+        with contextlib.suppress(asyncio.CancelledError):
             await slack_task
-        except asyncio.CancelledError:
-            pass
 
     await manager.shutdown()
     log.info("opsbot.shutdown")

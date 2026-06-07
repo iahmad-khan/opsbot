@@ -1,18 +1,15 @@
 from __future__ import annotations
 
-import json
-import uuid
-from datetime import datetime, timezone
-from typing import Any, AsyncIterator
+from datetime import UTC, datetime
 
 import structlog
 
-from opsbot.agent.llm import LLMClient, LLMResponse
+from opsbot.agent.llm import LLMClient
 from opsbot.agent.memory import ConversationMemory
 from opsbot.agent.prompts.system import SYSTEM_PROMPT
 from opsbot.mcp.manager import MCPManager, get_manager
-from opsbot.models.db import RiskLevel, TaskStatus
-from opsbot.tools.registry import get_tool_risk, get_human_description
+from opsbot.models.db import RiskLevel
+from opsbot.tools.registry import get_human_description, get_tool_risk
 
 log = structlog.get_logger(__name__)
 
@@ -52,7 +49,7 @@ class AgentEngine:
         self._llm = LLMClient()
 
     def _system_prompt(self) -> str:
-        return SYSTEM_PROMPT.format(today=datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+        return SYSTEM_PROMPT.format(today=datetime.now(UTC).strftime("%Y-%m-%d"))
 
     async def process(
         self,

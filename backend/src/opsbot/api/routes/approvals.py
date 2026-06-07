@@ -68,7 +68,7 @@ async def approve(
     try:
         approval = await _workflow.approve(db, approval_id, body.approver_slack_id)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     # Trigger execution via Celery
     from opsbot.tasks.celery_app import process_approval_task
@@ -90,5 +90,5 @@ async def deny(
     try:
         approval = await _workflow.deny(db, approval_id, body.approver_slack_id, body.denial_reason or "")
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return ApprovalRead.model_validate(approval)

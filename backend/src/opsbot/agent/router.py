@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 
-class Intent(str, Enum):
+class Intent(StrEnum):
     SLO_ANALYSIS = "slo_analysis"
     RCA = "rca"
     GENERAL_OPS = "general_ops"

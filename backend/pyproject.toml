@@ -116,7 +116,10 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM"]
-ignore = ["E501"]
+ignore = ["E501", "B008"]  # B008: FastAPI Depends() in function defaults is idiomatic
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["N999"]  # test modules don't follow naming conventions
 
 [tool.mypy]
 python_version = "3.12"

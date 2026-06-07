@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks
 
-from opsbot.models.schemas import RCARequest, RCAResult, SLOAnalysisRequest, SLOProposal
+from opsbot.models.schemas import RCARequest, SLOAnalysisRequest
 
 router = APIRouter(prefix="/sre", tags=["sre"])
 
@@ -25,8 +25,8 @@ async def trigger_slo_analysis(req: SLOAnalysisRequest, background_tasks: Backgr
 
 @router.post("/rca")
 async def trigger_rca(req: RCARequest) -> dict:
-    from opsbot.sre.rca_engine import RCAEngine
     from opsbot.sre.fix_generator import FixGenerator
+    from opsbot.sre.rca_engine import RCAEngine
 
     engine = RCAEngine()
     result = await engine.analyze(
@@ -54,8 +54,9 @@ async def trigger_rca(req: RCARequest) -> dict:
 
 @router.get("/slo-reports")
 async def list_slo_reports(service_name: str | None = None) -> dict:
-    from opsbot.models.db import make_session_factory, SLOReport
     from sqlalchemy import select
+
+    from opsbot.models.db import SLOReport, make_session_factory
     session_factory = make_session_factory()
     async with session_factory() as db:
         q = select(SLOReport).order_by(SLOReport.created_at.desc()).limit(50)
@@ -78,8 +79,9 @@ async def list_slo_reports(service_name: str | None = None) -> dict:
 
 @router.get("/rca-reports")
 async def list_rca_reports(service_name: str | None = None) -> dict:
-    from opsbot.models.db import make_session_factory, RCAReport
     from sqlalchemy import select
+
+    from opsbot.models.db import RCAReport, make_session_factory
     session_factory = make_session_factory()
     async with session_factory() as db:
         q = select(RCAReport).order_by(RCAReport.created_at.desc()).limit(50)

@@ -63,10 +63,9 @@ class SlackClient:
         await self._client.chat_postEphemeral(**kwargs)
 
     async def react(self, channel: str, ts: str, emoji: str) -> None:
-        try:
+        import contextlib
+        with contextlib.suppress(Exception):
             await self._client.reactions_add(channel=channel, timestamp=ts, name=emoji)
-        except Exception:
-            pass  # Ignore duplicate reaction errors
 
     async def get_user_info(self, user_id: str) -> dict:
         response = await self._client.users_info(user=user_id)

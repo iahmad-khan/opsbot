@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -133,7 +133,7 @@ class SLOAnalyzer:
             )
 
         result["service_name"] = service_name
-        result["generated_at"] = datetime.now(timezone.utc).isoformat()
+        result["generated_at"] = datetime.now(UTC).isoformat()
         log.info("slo.analyze.done", service=service_name)
         return result
 

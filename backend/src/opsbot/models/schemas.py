@@ -4,10 +4,9 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from opsbot.models.db import ApprovalStatus, RiskLevel, TaskStatus, UserRole
-
 
 # ---- User ----
 

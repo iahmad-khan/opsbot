@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import asyncio
 import json
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 import litellm
 import structlog

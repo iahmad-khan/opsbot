@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import structlog
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from opsbot.config.settings import get_settings
 from opsbot.models.db import Approval, ApprovalStatus, AuditLog, Task, TaskStatus
@@ -26,7 +26,7 @@ class ApprovalWorkflow:
         channel_id: str | None = None,
     ) -> Approval:
         s = get_settings()
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=s.approval_timeout_minutes)
+        expires_at = datetime.now(UTC) + timedelta(minutes=s.approval_timeout_minutes)
 
         approval = Approval(
             task_id=task_id,
@@ -62,7 +62,7 @@ class ApprovalWorkflow:
             raise ValueError(f"Approval {approval_id} not found")
         if approval.status != ApprovalStatus.PENDING:
             raise ValueError(f"Approval is already {approval.status}")
-        if approval.expires_at and datetime.now(timezone.utc) > approval.expires_at:
+        if approval.expires_at and datetime.now(UTC) > approval.expires_at:
             approval.status = ApprovalStatus.TIMED_OUT
             await db.commit()
             raise ValueError("Approval has expired")
@@ -80,7 +80,7 @@ class ApprovalWorkflow:
 
         approval.status = ApprovalStatus.APPROVED
         approval.approver_slack_id = approver_slack_id
-        approval.resolved_at = datetime.now(timezone.utc)
+        approval.resolved_at = datetime.now(UTC)
 
         task = await db.get(Task, approval.task_id)
         if task:
@@ -118,7 +118,7 @@ class ApprovalWorkflow:
         approval.status = ApprovalStatus.DENIED
         approval.approver_slack_id = denier_slack_id
         approval.denial_reason = reason
-        approval.resolved_at = datetime.now(timezone.utc)
+        approval.resolved_at = datetime.now(UTC)
 
         task = await db.get(Task, approval.task_id)
         if task:
@@ -149,7 +149,7 @@ class ApprovalWorkflow:
         return list(result.scalars().all())
 
     async def expire_old_approvals(self, db: AsyncSession) -> int:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         result = await db.execute(
             select(Approval).where(
                 Approval.status == ApprovalStatus.PENDING,
@@ -169,11 +169,7 @@ class ApprovalWorkflow:
     def can_approve(self, approver_role: str, risk_level: str) -> bool:
         """Check if a user with the given role can approve this risk level."""
         from opsbot.models.db import UserRole
-        if approver_role == UserRole.ADMIN:
-            return True
-        if approver_role == UserRole.SRE:
-            return True  # SREs can approve destructive ops
-        return False
+        return approver_role in (UserRole.ADMIN, UserRole.SRE)
 
     def needs_dual_approval(self, tool_name: str) -> bool:
         s = get_settings()

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from typing import Any
 
 import structlog
@@ -66,10 +65,9 @@ class MCPClient:
     async def disconnect(self) -> None:
         async with self._lock:
             if self._session:
-                try:
+                import contextlib
+                with contextlib.suppress(Exception):
                     await self._session.__aexit__(None, None, None)
-                except Exception:
-                    pass
                 self._session = None
 
     async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> str:
