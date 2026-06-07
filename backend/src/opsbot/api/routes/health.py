@@ -3,7 +3,9 @@ from __future__ import annotations
 import time
 
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from starlette.responses import Response
 
 from opsbot.config.settings import get_settings
 from opsbot.mcp.manager import get_manager
@@ -28,7 +30,7 @@ async def health() -> HealthResponse:
         r = aioredis.from_url(s.redis_url)
         await r.ping()
         checks["redis"] = "ok"
-        await r.aclose()
+        await r.aclose()  # type: ignore[attr-defined]
     except Exception as e:
         checks["redis"] = f"error: {e}"
         overall_ok = False
@@ -78,16 +80,15 @@ async def health() -> HealthResponse:
 
 
 @router.get("/ready")
-async def ready() -> dict:
+async def ready() -> Response:
     """Kubernetes readiness probe — only passes when critical deps are up."""
     s = get_settings()
     try:
         import redis.asyncio as aioredis
         r = aioredis.from_url(s.redis_url)
         await r.ping()
-        await r.aclose()
+        await r.aclose()  # type: ignore[attr-defined]
     except Exception as e:
-        from fastapi.responses import JSONResponse
         return JSONResponse(status_code=503, content={"ready": False, "reason": f"redis: {e}"})
 
     try:
@@ -99,10 +100,9 @@ async def ready() -> dict:
             await conn.execute(text("SELECT 1"))
         await engine.dispose()
     except Exception as e:
-        from fastapi.responses import JSONResponse
         return JSONResponse(status_code=503, content={"ready": False, "reason": f"database: {e}"})
 
-    return {"ready": True}
+    return JSONResponse(content={"ready": True})
 
 
 @router.get("/alive")

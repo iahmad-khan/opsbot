@@ -113,7 +113,7 @@ export default async function DashboardPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-white truncate">{task.original_message}</p>
                     <p className="text-xs text-gray-400">
-                      <@{task.requester_slack_id}> · {new Date(task.created_at).toLocaleString()}
+                      @{task.requester_slack_id} · {new Date(task.created_at).toLocaleString()}
                     </p>
                   </div>
                   <StatusBadge status={task.status} />

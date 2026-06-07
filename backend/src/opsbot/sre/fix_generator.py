@@ -115,6 +115,8 @@ class FixGenerator:
             try:
                 if action == "update":
                     existing = r.get_contents(path, ref=branch_name)
+                    if isinstance(existing, list):
+                        existing = existing[0]
                     r.update_file(
                         path=path,
                         message=f"fix: {description}",

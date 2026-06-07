@@ -19,7 +19,7 @@ BASE = "https://api.opsgenie.com/v2"
 
 class OpsGenieTools:
     async def list_alerts(self, status: str = "open", limit: int = 20) -> dict:
-        params = {"limit": limit, "status": status, "order": "desc"}
+        params: dict[str, str | int] = {"limit": limit, "status": status, "order": "desc"}
         async with httpx.AsyncClient() as c:
             r = await c.get(f"{BASE}/alerts", headers=_headers(), params=params)
             r.raise_for_status()

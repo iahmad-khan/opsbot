@@ -12,7 +12,7 @@ const RISK_COLORS: Record<string, string> = {
 };
 
 export default function ApprovalsPage() {
-  const [approverSlackId, setApproverSlackId] = useState("U_APPROVER");
+  const [approverSlackId, setApproverSlackId] = useState("");
   const { data, isLoading, error } = useSWR("/approvals", () => api.getApprovals({ status: "pending" }), {
     refreshInterval: 10000,
   });

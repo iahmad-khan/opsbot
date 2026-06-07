@@ -4,9 +4,12 @@ import { BarChart2, TrendingDown } from "lucide-react";
 export default async function SLOsPage() {
   let sloReports: any = null;
   let rcaReports: any = null;
+  let fetchError: string | null = null;
   try {
     [sloReports, rcaReports] = await Promise.all([api.getSLOReports(), api.getRCAReports()]);
-  } catch {}
+  } catch (e: any) {
+    fetchError = e?.message ?? "Failed to load SLO data";
+  }
 
   return (
     <div className="space-y-6">
@@ -14,6 +17,12 @@ export default async function SLOsPage() {
         <h1 className="text-2xl font-bold text-white">SLO Health</h1>
         <p className="text-gray-400 text-sm mt-1">Service Level Objectives and RCA reports</p>
       </div>
+
+      {fetchError && (
+        <div className="bg-red-900/30 border border-red-700 rounded-lg px-4 py-3 text-red-300 text-sm">
+          Failed to load SLO data: {fetchError}
+        </div>
+      )}
 
       {/* SLO Reports */}
       <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">

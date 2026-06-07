@@ -32,7 +32,7 @@ async def _check_rate_limit(user_id: str) -> bool:
             pipe.zcard(key)
             pipe.expire(key, _RATE_LIMIT_WINDOW + 10)
             results = await pipe.execute()
-        await r.aclose()
+        await r.aclose()  # type: ignore[attr-defined]
         count: int = results[2]
         return count <= _RATE_LIMIT_MAX
     except Exception as e:

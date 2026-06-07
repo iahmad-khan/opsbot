@@ -21,6 +21,7 @@ async def _run(cmd: list[str], cwd: str, env: dict | None = None) -> tuple[str, 
         env=proc_env,
     )
     stdout, stderr = await proc.communicate()
+    assert proc.returncode is not None  # communicate() always sets returncode
     return stdout.decode(), stderr.decode(), proc.returncode
 
 

@@ -27,10 +27,10 @@ class KubernetesTools:
         await _load_kube_config()
         async with client.ApiClient() as api_client:
             v1 = client.CoreV1Api(api_client)
-            kwargs = {"namespace": namespace}
             if label_selector:
-                kwargs["label_selector"] = label_selector
-            result = await v1.list_namespaced_pod(**kwargs)
+                result = await v1.list_namespaced_pod(namespace, label_selector=label_selector)
+            else:
+                result = await v1.list_namespaced_pod(namespace)
             pods = []
             for pod in result.items:
                 pods.append({
@@ -122,7 +122,7 @@ class KubernetesTools:
         async with client.ApiClient() as api_client:
             apps_v1 = client.AppsV1Api(api_client)
             if revision:
-                body = {
+                body: dict = {  # type: ignore[assignment]
                     "spec": {
                         "rollbackTo": {"revision": revision}
                     }

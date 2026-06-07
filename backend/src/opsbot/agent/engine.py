@@ -23,10 +23,11 @@ _WRITE_ALLOWED_ROLES = {"developer", "sre", "admin"}
 class NeedsApprovalError(Exception):
     """Raised when the agent wants to execute a DESTRUCTIVE tool that needs approval."""
 
-    def __init__(self, tool_name: str, tool_args: dict, description: str) -> None:
+    def __init__(self, tool_name: str, tool_args: dict, description: str, tool_call_id: str = "") -> None:
         self.tool_name = tool_name
         self.tool_args = tool_args
         self.description = description
+        self.tool_call_id = tool_call_id
         self.risk_level = get_tool_risk(tool_name)
         super().__init__(f"Approval required for {tool_name}")
 
@@ -67,6 +68,7 @@ class AgentEngine:
             message = message[:MAX_MESSAGE_LENGTH] + "\n[message truncated]"
 
         history = await self._memory.get_history(channel_id, thread_ts)
+        initial_length = len(history)
         history.append({"role": "user", "content": message})
 
         tools = self._mcp.get_all_tools()
@@ -85,10 +87,9 @@ class AgentEngine:
             history.append(response_msg)
 
             if not response.tool_calls:
-                # Final answer
+                # Final answer — save only the messages added this invocation
                 final_content = response.content or "Done."
-                await self._memory.append_many(channel_id, [{"role": "user", "content": message}] if not history[:-2] else [], thread_ts)
-                await self._memory.append(channel_id, response_msg, thread_ts)
+                await self._memory.append_many(channel_id, history[initial_length:], thread_ts)
                 log.info("agent.done", iterations=iterations, tool_calls=len(tool_calls_made))
                 return AgentResult(final_content, tool_calls_made, "completed")
 
@@ -104,9 +105,8 @@ class AgentEngine:
 
                 if risk == RiskLevel.DESTRUCTIVE:
                     description = get_human_description(tool_name, tool_args)
-                    # Persist conversation state before pausing
-                    await self._memory.append_many(channel_id, history[-len(history):], thread_ts)
-                    raise NeedsApprovalError(tool_name, tool_args, description)
+                    await self._memory.append_many(channel_id, history[initial_length:], thread_ts)
+                    raise NeedsApprovalError(tool_name, tool_args, description, tool_call_id=tc.id)
 
                 # Enforce WRITE operations are blocked for readonly users
                 if risk == RiskLevel.WRITE and requester_role not in _WRITE_ALLOWED_ROLES:
@@ -139,7 +139,7 @@ class AgentEngine:
 
             history.extend(tool_result_messages)
 
-        await self._memory.append_many(channel_id, history, thread_ts)
+        await self._memory.append_many(channel_id, history[initial_length:], thread_ts)
         return AgentResult("I've reached the maximum number of steps. Please try a more specific request.", tool_calls_made, "failed")
 
     async def resume_after_approval(
@@ -154,6 +154,7 @@ class AgentEngine:
         log.info("agent.resume", tool=tool_name, channel=channel_id)
 
         history = await self._memory.get_history(channel_id, thread_ts)
+        initial_length = len(history)
         tools = self._mcp.get_all_tools()
         tool_calls_made: list[dict] = []
 
@@ -176,7 +177,7 @@ class AgentEngine:
             history.append(response_msg)
 
             if not response.tool_calls:
-                await self._memory.append(channel_id, response_msg, thread_ts)
+                await self._memory.append_many(channel_id, history[initial_length:], thread_ts)
                 return AgentResult(response.content or "Done.", tool_calls_made, "completed")
 
             tool_result_messages: list[dict] = []
@@ -194,5 +195,5 @@ class AgentEngine:
 
             history.extend(tool_result_messages)
 
-        await self._memory.append_many(channel_id, history, thread_ts)
+        await self._memory.append_many(channel_id, history[initial_length:], thread_ts)
         return AgentResult("Operation completed.", tool_calls_made, "completed")

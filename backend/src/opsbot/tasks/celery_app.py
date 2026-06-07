@@ -178,12 +178,15 @@ async def _process_message(task, message: str, channel_id: str, requester_slack_
         log.info("task.needs_approval", tool=e.tool_name, task_id=str(task_id))
         approval_wf = ApprovalWorkflow()
 
+        # Embed the LLM tool_call_id so it can be restored when approval resumes
+        tool_args_with_id = {**e.tool_args, "__tool_call_id__": e.tool_call_id}
+
         async with session_factory() as db:
             approval = await approval_wf.create_approval(
                 db=db,
                 task_id=task_id,
                 tool_name=e.tool_name,
-                tool_args=e.tool_args,
+                tool_args=tool_args_with_id,
                 description=e.description,
                 risk_level=e.risk_level,
                 requester_slack_id=requester_slack_id,
@@ -263,13 +266,16 @@ async def _process_approval(
             await slack.post_message(channel_id, text=f"❌ Operation denied by <@{approver_slack_id}>.", thread_ts=thread_ts)
         return {"status": "denied"}
 
-    # Execute the approved tool
+    # Execute the approved tool — extract the real LLM tool_call_id stored at approval time
+    raw_tool_args = dict(approval.tool_args or {})
+    original_tool_call_id = raw_tool_args.pop("__tool_call_id__", "approved")
+
     try:
         engine = AgentEngine()
         result_obj = await engine.resume_after_approval(
             tool_name=approval.tool_name,
-            tool_args=approval.tool_args,
-            original_tool_call_id="approved",
+            tool_args=raw_tool_args,
+            original_tool_call_id=original_tool_call_id,
             channel_id=channel_id or "",
             thread_ts=thread_ts,
         )
@@ -286,7 +292,7 @@ async def _process_approval(
                 t.completed_at = datetime.now(UTC)
                 db.add(AuditLog(
                     task_id=approval.task_id,
-                    actor_slack_id=approval.tool_name,
+                    actor_slack_id=approver_slack_id,
                     action=f"executed:{approval.tool_name}",
                     tool_name=approval.tool_name,
                     tool_args=approval.tool_args,

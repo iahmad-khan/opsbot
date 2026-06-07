@@ -73,6 +73,8 @@ class MCPClient:
     async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> str:
         if self._session is None:
             await self.connect()
+        if self._session is None:
+            raise RuntimeError(f"MCP server {self.config.name!r} failed to connect")
 
         log.debug("mcp.tool.call", server=self.config.name, tool=tool_name, args=_redact_args(arguments))
         try:
