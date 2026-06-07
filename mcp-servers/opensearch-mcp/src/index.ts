@@ -46,8 +46,12 @@ function serviceFilter(service: string): object {
   };
 }
 
+interface FilterClause {
+  bool: { should: object[]; minimum_should_match: number };
+}
+
 // Build log level filter covering ECS and custom formats
-function levelFilter(levels: string[]): object {
+function levelFilter(levels: string[]): FilterClause {
   return {
     bool: {
       should: [

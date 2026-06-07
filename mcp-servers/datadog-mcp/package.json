@@ -10,8 +10,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "@datadog/datadog-api-client": "^1.28.0",
-    "zod": "^3.23.0"
+    "axios": "^1.7.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

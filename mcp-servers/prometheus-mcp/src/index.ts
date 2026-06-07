@@ -118,11 +118,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "query_range": {
         const now = new Date();
-        const lookbackMs = (args?.lookback_hours || 1) * 3600 * 1000;
+        const lookbackMs = (Number(args?.lookback_hours) || 1) * 3600 * 1000;
         const params: Record<string, string> = {
           query: String(args!.query),
-          start: args?.start || new Date(now.getTime() - lookbackMs).toISOString(),
-          end: args?.end || now.toISOString(),
+          start: String(args?.start || new Date(now.getTime() - lookbackMs).toISOString()),
+          end: String(args?.end || now.toISOString()),
           step: String(args?.step || "60s"),
         };
         const { data } = await client.get("/api/v1/query_range", { params });

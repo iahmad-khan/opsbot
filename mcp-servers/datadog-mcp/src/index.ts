@@ -4,15 +4,20 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { client, v1, v2 } from "@datadog/datadog-api-client";
+import axios from "axios";
 
 const DD_API_KEY = process.env.DD_API_KEY || "";
 const DD_APP_KEY = process.env.DD_APP_KEY || "";
 const DD_SITE = process.env.DD_SITE || "datadoghq.com";
 
-const configuration = client.createConfiguration({
-  authMethods: { apiKeyAuth: DD_API_KEY, appKeyAuth: DD_APP_KEY },
-  serverVariables: { site: DD_SITE },
+const v1 = axios.create({
+  baseURL: `https://api.${DD_SITE}/api/v1`,
+  headers: { "DD-API-KEY": DD_API_KEY, "DD-APPLICATION-KEY": DD_APP_KEY },
+});
+
+const v2 = axios.create({
+  baseURL: `https://api.${DD_SITE}/api/v2`,
+  headers: { "DD-API-KEY": DD_API_KEY, "DD-APPLICATION-KEY": DD_APP_KEY },
 });
 
 const server = new Server(
@@ -92,34 +97,36 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     switch (name) {
       case "query_metrics": {
-        const metricsApi = new v1.MetricsApi(configuration);
         const now = Math.floor(Date.now() / 1000);
-        const result = await metricsApi.queryMetrics({
-          from: args?.from_ts || now - 3600,
-          to: args?.to_ts || now,
-          query: String(args!.query),
+        const { data } = await v1.get("/query", {
+          params: {
+            from: Number(args?.from_ts) || now - 3600,
+            to: Number(args?.to_ts) || now,
+            query: String(args!.query),
+          },
         });
-        const series = (result.series || []).map((s: any) => ({
+        const series = (data.series || []).map((s: any) => ({
           metric: s.metric,
-          points: (s.pointlist || []).slice(-10).map(([t, v]: [number, number]) => ({ t, v: Math.round(v * 100) / 100 })),
+          points: (s.pointlist || []).slice(-10).map(([t, v]: [number, number]) => ({
+            t,
+            v: Math.round(v * 100) / 100,
+          })),
         }));
         return { content: [{ type: "text", text: JSON.stringify(series, null, 2) }] };
       }
 
       case "get_logs": {
-        const logsApi = new v2.LogsApi(configuration);
         const now = new Date();
-        const body: v2.LogsListRequest = {
+        const { data } = await v2.post("/logs/events/search", {
           filter: {
             query: String(args!.query),
-            from: args?.from || new Date(now.getTime() - 3600000).toISOString(),
-            to: args?.to || now.toISOString(),
+            from: String(args?.from || new Date(now.getTime() - 3600000).toISOString()),
+            to: String(args?.to || now.toISOString()),
           },
-          sort: v2.LogsSort.TIMESTAMP_DESCENDING,
+          sort: "timestamp",
           page: { limit: Number(args?.limit || 50) },
-        };
-        const result = await logsApi.listLogs({ body });
-        const logs = (result.data || []).map((l: any) => ({
+        });
+        const logs = (data.data || []).map((l: any) => ({
           timestamp: l.attributes?.timestamp,
           service: l.attributes?.service,
           status: l.attributes?.status,
@@ -129,31 +136,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "list_monitors": {
-        const monitorsApi = new v1.MonitorsApi(configuration);
-        const params: Record<string, any> = {};
-        if (args?.tags) params.monitorTags = (args.tags as string[]).join(",");
-        const monitors = await monitorsApi.listMonitors(params);
-        const formatted = (monitors || [])
-          .filter((m: any) => !args?.name_filter || m.name?.includes(String(args.name_filter)))
-          .slice(0, 30)
-          .map((m: any) => ({
-            id: m.id,
-            name: m.name,
-            type: m.type,
-            overallState: m.overallState,
-            tags: m.tags,
-          }));
+        const params: Record<string, string> = {};
+        if (args?.tags) params.monitor_tags = (args.tags as string[]).join(",");
+        if (args?.name_filter) params.name = String(args.name_filter);
+        const { data } = await v1.get("/monitor", { params });
+        const formatted = (data || []).slice(0, 30).map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          type: m.type,
+          overall_state: m.overall_state,
+          tags: m.tags,
+        }));
         return { content: [{ type: "text", text: JSON.stringify(formatted, null, 2) }] };
       }
 
       case "get_monitor": {
-        const monitorsApi = new v1.MonitorsApi(configuration);
-        const m = await monitorsApi.getMonitor({ monitorId: Number(args!.monitor_id) });
+        const { data: m } = await v1.get(`/monitor/${Number(args!.monitor_id)}`);
         return {
           content: [{
             type: "text",
             text: JSON.stringify({
-              id: m.id, name: m.name, type: m.type, overallState: m.overallState,
+              id: m.id, name: m.name, type: m.type, overall_state: m.overall_state,
               query: m.query, message: m.message, tags: m.tags,
             }, null, 2),
           }],
@@ -161,9 +164,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "mute_monitor": {
-        const monitorsApi = new v1.MonitorsApi(configuration);
-        await monitorsApi.muteMonitor({ monitorId: Number(args!.monitor_id) });
-        return { content: [{ type: "text", text: `✅ Monitor ${args!.monitor_id} muted` }] };
+        const body: Record<string, number> = {};
+        if (args?.end_ts) body.end = Number(args.end_ts);
+        await v1.post(`/monitor/${Number(args!.monitor_id)}/mute`, body);
+        return { content: [{ type: "text", text: `Monitor ${args!.monitor_id} muted` }] };
       }
 
       default:
