@@ -125,12 +125,27 @@ class TestApprove:
         wf = ApprovalWorkflow()
         task = _make_task()
         approval = _make_approval(task)
-        dev_user = _make_user("U_dev", UserRole.DEVELOPER)
+        # Use a *different* developer (not the requester) so the self-approval guard
+        # doesn't fire before the role check — we're testing the role check here.
+        dev_user2 = _make_user("U_dev2", UserRole.DEVELOPER)
 
         db = AsyncMock()
-        db.execute = _execute_side_effect(approval, dev_user)
+        db.execute = _execute_side_effect(approval, dev_user2)
 
         with pytest.raises(ValueError, match="does not have permission"):
+            await wf.approve(db, approval.id, "U_dev2")
+
+    @pytest.mark.asyncio
+    async def test_self_approval_raises(self):
+        """Requester cannot approve their own operation."""
+        wf = ApprovalWorkflow()
+        task = _make_task()
+        approval = _make_approval(task)  # requester_slack_id = "U_dev"
+
+        db = AsyncMock()
+        db.execute = _execute_side_effect(approval)
+
+        with pytest.raises(ValueError, match="cannot approve your own request"):
             await wf.approve(db, approval.id, "U_dev")
 
     @pytest.mark.asyncio
