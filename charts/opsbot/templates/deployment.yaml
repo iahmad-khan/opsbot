@@ -34,6 +34,10 @@ spec:
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
+            - name: KAGENT_URL
+              value: "http://kagent-controller.kagent-system:8083"
+            - name: KAGENT_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
           envFrom:
             - secretRef:
                 name: {{ .Values.secretName }}
@@ -56,101 +60,3 @@ spec:
           secret:
             secretName: {{ include "opsbot.fullname" . }}-kubeconfig
             optional: true
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: {{ include "opsbot.fullname" . }}-worker
-  labels:
-    {{- include "opsbot.labels" . | nindent 4 }}
-    app.kubernetes.io/component: worker
-spec:
-  replicas: {{ .Values.workerReplicas }}
-  selector:
-    matchLabels:
-      {{- include "opsbot.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: worker
-  template:
-    metadata:
-      labels:
-        {{- include "opsbot.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: worker
-    spec:
-      containers:
-        - name: worker
-          image: "{{ .Values.workerImage.repository }}:{{ .Values.workerImage.tag }}"
-          imagePullPolicy: {{ .Values.workerImage.pullPolicy }}
-          command:
-            - celery
-            - -A
-            - opsbot.tasks.celery_app:celery_app
-            - worker
-            - --loglevel=info
-            - --concurrency={{ .Values.worker.concurrency | default 4 }}
-            - -Q
-            - default,approvals,sre
-          env:
-            {{- range $k, $v := .Values.env }}
-            - name: {{ $k }}
-              value: {{ $v | quote }}
-            {{- end }}
-          envFrom:
-            - secretRef:
-                name: {{ .Values.secretName }}
-          livenessProbe:
-            exec:
-              command: ["celery", "-A", "opsbot.tasks.celery_app:celery_app", "inspect", "ping", "--timeout", "5"]
-            initialDelaySeconds: 30
-            periodSeconds: 60
-            failureThreshold: 3
-          readinessProbe:
-            exec:
-              command: ["celery", "-A", "opsbot.tasks.celery_app:celery_app", "inspect", "ping", "--timeout", "5"]
-            initialDelaySeconds: 15
-            periodSeconds: 30
-            failureThreshold: 2
-          resources:
-            {{- toYaml .Values.resources.worker | nindent 12 }}
-          volumeMounts:
-            - name: kubeconfig
-              mountPath: /root/.kube
-              readOnly: true
-      volumes:
-        - name: kubeconfig
-          secret:
-            secretName: {{ include "opsbot.fullname" . }}-kubeconfig
-            optional: true
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: {{ include "opsbot.fullname" . }}-frontend
-  labels:
-    {{- include "opsbot.labels" . | nindent 4 }}
-    app.kubernetes.io/component: frontend
-spec:
-  replicas: {{ .Values.frontend.replicaCount | default 2 }}
-  selector:
-    matchLabels:
-      {{- include "opsbot.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: frontend
-  template:
-    metadata:
-      labels:
-        {{- include "opsbot.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: frontend
-    spec:
-      containers:
-        - name: frontend
-          image: "{{ .Values.frontendImage.repository }}:{{ .Values.frontendImage.tag }}"
-          imagePullPolicy: {{ .Values.frontendImage.pullPolicy }}
-          ports:
-            - name: http
-              containerPort: 3000
-          env:
-            - name: API_URL
-              value: "http://{{ include "opsbot.fullname" . }}-backend:{{ .Values.service.port }}"
-            - name: NEXT_PUBLIC_API_URL
-              value: "/api/backend"
-          resources:
-            {{- toYaml .Values.resources.frontend | nindent 12 }}

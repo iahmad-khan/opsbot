@@ -2,33 +2,12 @@ replicaCount: 2
 
 image:
   repository: your-registry/opsbot-backend
-  tag: "0.1.0"
+  tag: "0.2.0"
   pullPolicy: IfNotPresent
-
-frontendImage:
-  repository: your-registry/opsbot-frontend
-  tag: "0.1.0"
-  pullPolicy: IfNotPresent
-
-workerImage:
-  repository: your-registry/opsbot-backend
-  tag: "0.1.0"
-  pullPolicy: IfNotPresent
-
-workerReplicas: 3
-
-worker:
-  concurrency: 8  # threads per worker pod; increase if LLM timeouts are short
 
 service:
   type: ClusterIP
   port: 8000
-
-frontend:
-  replicaCount: 2
-  service:
-    type: ClusterIP
-    port: 3000
 
 ingress:
   enabled: true
@@ -42,9 +21,6 @@ ingress:
         - path: /api
           pathType: Prefix
           service: backend
-        - path: /
-          pathType: Prefix
-          service: frontend
   tls:
     - secretName: opsbot-tls
       hosts:
@@ -58,20 +34,6 @@ resources:
     limits:
       cpu: 1000m
       memory: 1Gi
-  worker:
-    requests:
-      cpu: 250m
-      memory: 512Mi
-    limits:
-      cpu: 500m
-      memory: 768Mi
-  frontend:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
 
 autoscaling:
   enabled: true
@@ -121,7 +83,7 @@ env:
   LOG_LEVEL: INFO
   LITELLM_DEFAULT_MODEL: claude-sonnet-4-6
 
-# These come from a Kubernetes Secret named 'opsbot-secrets'
+# Secret name that holds ANTHROPIC_API_KEY, SLACK_BOT_TOKEN, etc.
 secretName: opsbot-secrets
 
 livenessProbe:
@@ -150,3 +112,115 @@ podAnnotations:
 podDisruptionBudget:
   enabled: true
   minAvailable: 1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# KAGENT configuration
+# ─────────────────────────────────────────────────────────────────────────────
+kagent:
+  # Set to true to install the KAGENT controller (CRDs, controller pod, A2A endpoint).
+  enabled: true
+
+  # LLM model for all agents.
+  model: claude-sonnet-4-6
+
+# ─────────────────────────────────────────────────────────────────────────────
+# KAGENT bundled tool server (subchart: kagent-tools)
+# Provides: kubectl, helm, prometheus, grafana, argo-rollouts, cilium, istio,
+#           shell, datetime — all in a single pod at port 8084.
+# Image: ghcr.io/kagent-dev/kagent/tools
+# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# kagent-tools subchart — KAGENT official tool server
+# Values here are passed directly to the kagent-tools sub-chart.
+# Image: ghcr.io/kagent-dev/kagent/tools (port 8084)
+# Docs:  https://github.com/kagent-dev/tools
+# ─────────────────────────────────────────────────────────────────────────────
+kagent-tools:
+  enabled: true
+
+  tools:
+    # ── Kubernetes ─────────────────────────────────────────────────────────
+    # Auto-discovery: the kubeconfig secret (see below) is mounted at
+    # /root/.kube/config so all contexts in it are available immediately.
+    # The agent discovers them at runtime with get_cluster_configuration —
+    # no static context list is needed.
+    k8s:
+      tokenPassthrough: false   # set true to proxy the caller's Bearer token
+
+    # ── Prometheus ─────────────────────────────────────────────────────────
+    prometheus:
+      url: "http://prometheus.monitoring.svc.cluster.local:9090"
+      username: ""
+      password: ""   # basic-auth only if Prometheus requires it
+
+    # ── Grafana ────────────────────────────────────────────────────────────
+    grafana:
+      url: "http://grafana.monitoring.svc.cluster.local:3000"
+      apiKey: ""     # Grafana service-account token with Editor role
+
+    # Which tool categories to load (empty = all — recommended)
+    enabledTools: []
+
+  rbac:
+    readOnly: false   # set true to deploy a read-only ClusterRole
+
+  # ── Multi-cluster kubeconfig ──────────────────────────────────────────────
+  # Mount a kubeconfig Secret that contains all cluster contexts.
+  # The tool server reads it at startup; KAGENT agents discover contexts via
+  # get_cluster_configuration and pass --context <name> to kubectl tools.
+  #
+  # Create the secret once per cluster:
+  #   kubectl create secret generic opsbot-kubeconfig \
+  #     --from-file=config=$HOME/.kube/config \
+  #     -n opsbot
+  #
+  # For EKS/GKE token refresh to work inside the pod, merge all cluster
+  # entries into one kubeconfig and include static credentials or an
+  # exec-based auth provider that works without cloud CLI tools.
+  # Recommended: use static bearer tokens from ServiceAccounts in each cluster.
+  extraVolumes:
+    - name: kubeconfig
+      secret:
+        secretName: opsbot-kubeconfig
+        optional: true   # pod starts normally even if secret does not exist
+  extraVolumeMounts:
+    - name: kubeconfig
+      mountPath: /root/.kube
+      readOnly: true
+  extraEnv:
+    - name: KUBECONFIG
+      value: /root/.kube/config
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MCP server pods for tools NOT bundled in kagent-tools
+# (Kubernetes, ArgoCD, Prometheus are now handled by kagentTools above)
+# ─────────────────────────────────────────────────────────────────────────────
+mcpServers:
+  # GitHub — official GitHub MCP server (maintained by GitHub, Inc.)
+  github:
+    image:
+      repository: ghcr.io/github/github-mcp-server
+      tag: latest
+      pullPolicy: Always
+
+  # Datadog — no KAGENT official image yet
+  datadog:
+    image:
+      repository: your-registry/opsbot-datadog-mcp
+      tag: "0.2.0"
+      pullPolicy: IfNotPresent
+    site: datadoghq.com
+
+  # Jira — no KAGENT official image yet
+  jira:
+    image:
+      repository: your-registry/opsbot-jira-mcp
+      tag: "0.2.0"
+      pullPolicy: IfNotPresent
+
+  # Kubernetes — KAGENT's official kubectl tool server (replaces strowk/mcp-k8s-go)
+  kubernetes:
+    image:
+      repository: ghcr.io/kagent-ai/tools/kubectl
+      tag: latest
+      pullPolicy: Always

@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import StrEnum
+from functools import lru_cache
 
 from sqlalchemy import (
     JSON,
@@ -24,6 +25,7 @@ class Base(AsyncAttrs, DeclarativeBase):
     pass
 
 
+@lru_cache(maxsize=1)
 def make_engine():
     s = get_settings()
     return create_async_engine(

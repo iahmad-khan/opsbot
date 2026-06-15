@@ -1,0 +1,15 @@
+{{- if .Values.kagent.enabled }}
+apiVersion: kagent.dev/v1alpha1
+kind: ModelConfig
+metadata:
+  name: {{ include "opsbot.fullname" . }}-claude
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opsbot.labels" . | nindent 4 }}
+spec:
+  provider: anthropic
+  model: {{ .Values.kagent.model | default "claude-sonnet-4-6" | quote }}
+  apiKeySecretRef:
+    name: {{ .Values.secretName }}
+    key: ANTHROPIC_API_KEY
+{{- end }}

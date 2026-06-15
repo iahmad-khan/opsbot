@@ -1,0 +1,133 @@
+{{- if .Values.kagent.enabled }}
+---
+# RemoteMCPServer pointing at the KAGENT official bundled tool server.
+# The kagent-tools subchart deploys the tool server pod; this CRD tells the KAGENT
+# controller where to reach it. Provides: kubectl, helm, prometheus, grafana,
+# argo-rollouts, cilium, istio, shell, datetime (80+ tools, no extra pods needed).
+apiVersion: kagent.dev/v1alpha2
+kind: RemoteMCPServer
+metadata:
+  name: {{ include "opsbot.fullname" . }}-kagent-tools
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opsbot.labels" . | nindent 4 }}
+spec:
+  url: "http://{{ .Release.Name }}-kagent-tools.{{ .Release.Namespace }}.svc.cluster.local:8084/mcp"
+  timeout: 30s
+  sseReadTimeout: 5m0s
+  description: "KAGENT official tool server — k8s, helm, prometheus, grafana, argo-rollouts, cilium, istio"
+
+---
+# GitHub MCP server — official GitHub-maintained MCP server (ghcr.io/github/github-mcp-server).
+# Not in KAGENT's bundled server; runs as a separate pod.
+apiVersion: kagent.dev/v1alpha1
+kind: MCPServer
+metadata:
+  name: github-mcp
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opsbot.labels" . | nindent 4 }}
+spec:
+  podTemplate:
+    spec:
+      containers:
+        - name: server
+          image: "{{ .Values.mcpServers.github.image.repository }}:{{ .Values.mcpServers.github.image.tag }}"
+          imagePullPolicy: {{ .Values.mcpServers.github.image.pullPolicy | default "Always" }}
+          env:
+            - name: GITHUB_PERSONAL_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: GITHUB_TOKEN
+                  optional: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+---
+# Datadog MCP server — custom server (no KAGENT official image yet).
+apiVersion: kagent.dev/v1alpha1
+kind: MCPServer
+metadata:
+  name: datadog-mcp
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opsbot.labels" . | nindent 4 }}
+spec:
+  podTemplate:
+    spec:
+      containers:
+        - name: server
+          image: "{{ .Values.mcpServers.datadog.image.repository }}:{{ .Values.mcpServers.datadog.image.tag }}"
+          imagePullPolicy: {{ .Values.mcpServers.datadog.image.pullPolicy | default "IfNotPresent" }}
+          env:
+            - name: DATADOG_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: DATADOG_API_KEY
+                  optional: true
+            - name: DATADOG_APP_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: DATADOG_APP_KEY
+                  optional: true
+            - name: DATADOG_SITE
+              value: {{ .Values.mcpServers.datadog.site | default "datadoghq.com" | quote }}
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+---
+# Jira MCP server — custom server (no KAGENT official image yet).
+apiVersion: kagent.dev/v1alpha1
+kind: MCPServer
+metadata:
+  name: jira-mcp
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opsbot.labels" . | nindent 4 }}
+spec:
+  podTemplate:
+    spec:
+      containers:
+        - name: server
+          image: "{{ .Values.mcpServers.jira.image.repository }}:{{ .Values.mcpServers.jira.image.tag }}"
+          imagePullPolicy: {{ .Values.mcpServers.jira.image.pullPolicy | default "IfNotPresent" }}
+          env:
+            - name: JIRA_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: JIRA_URL
+                  optional: true
+            - name: JIRA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: JIRA_USERNAME
+                  optional: true
+            - name: JIRA_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: JIRA_API_TOKEN
+                  optional: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+{{- end }}

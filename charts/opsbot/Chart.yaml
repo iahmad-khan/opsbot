@@ -1,15 +1,28 @@
 apiVersion: v2
 name: opsbot
-description: Advanced DevOps & SRE Automation Platform
+description: Advanced DevOps & SRE Automation Platform — KAGENT edition
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.2.0
+appVersion: "0.2.0"
 keywords:
   - devops
   - sre
   - automation
   - chatops
   - slack
+  - kagent
 maintainers:
   - name: DevOps Team
     email: devops@example.com
+
+dependencies:
+  # KAGENT controller (agents, approvals, A2A endpoint)
+  - name: kagent
+    version: ">=0.9.0"
+    repository: "oci://ghcr.io/kagent-dev/kagent/helm"
+    condition: kagent.enabled
+  # KAGENT bundled tool server (k8s, helm, prometheus, grafana, argo-rollouts, cilium, istio)
+  - name: kagent-tools
+    version: ">=0.0.13"
+    repository: "oci://ghcr.io/kagent-dev/tools/helm"
+    condition: kagentTools.enabled

@@ -14,20 +14,3 @@ spec:
   selector:
     {{- include "opsbot.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: backend
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ include "opsbot.fullname" . }}-frontend
-  labels:
-    {{- include "opsbot.labels" . | nindent 4 }}
-spec:
-  type: {{ .Values.frontend.service.type }}
-  ports:
-    - port: {{ .Values.frontend.service.port }}
-      targetPort: http
-      protocol: TCP
-      name: http
-  selector:
-    {{- include "opsbot.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: frontend

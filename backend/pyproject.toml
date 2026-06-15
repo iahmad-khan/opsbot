@@ -34,9 +34,9 @@ dependencies = [
     # Redis / Cache
     "redis[hiredis]>=5.2.0",
 
-    # Task queue
-    "celery[redis]>=5.4.0",
-    "celery-redbeat>=2.2.0",
+    # Task queue (retained for backwards-compatible migration; remove once Celery is fully retired)
+    # "celery[redis]>=5.4.0",
+    # "celery-redbeat>=2.2.0",
 
     # GitHub
     "PyGithub>=2.5.0",
@@ -105,7 +105,6 @@ dev = [
 
 [project.scripts]
 opsbot = "opsbot.cli:app"
-opsbot-worker = "opsbot.tasks.celery_app:cli"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/opsbot"]

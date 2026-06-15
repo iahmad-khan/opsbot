@@ -9,9 +9,10 @@ router = APIRouter(prefix="/sre", tags=["sre"])
 
 @router.post("/slo-analysis")
 async def trigger_slo_analysis(req: SLOAnalysisRequest, background_tasks: BackgroundTasks) -> dict:
-    from opsbot.tasks.celery_app import run_slo_analysis_task
+    from opsbot.kagent.execution import run_slo_analysis_background
 
-    task = run_slo_analysis_task.delay(
+    background_tasks.add_task(
+        run_slo_analysis_background,
         service_name=req.service_name,
         namespace=req.namespace,
         lookback_days=req.lookback_days,
@@ -20,7 +21,7 @@ async def trigger_slo_analysis(req: SLOAnalysisRequest, background_tasks: Backgr
         create_pr=req.create_pr,
         target_repo=req.target_repo,
     )
-    return {"task_id": task.id, "status": "queued", "service": req.service_name}
+    return {"status": "queued", "service": req.service_name}
 
 
 @router.post("/rca")

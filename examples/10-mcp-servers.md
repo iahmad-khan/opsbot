@@ -1,134 +1,235 @@
-# MCP Servers
+# MCP Servers and KAGENT Tool Server
 
-OpsBot connects to external tools via the Model Context Protocol (MCP). It uses 8 custom TypeScript MCP servers plus external ones for Kubernetes and GitHub.
-
----
-
-## Architecture
-
-```
-Agent Engine
-    │
-    └── MCP Manager (mcp/manager.py)
-            │
-            ├── kubernetes-mcp-server  (npx)
-            ├── @modelcontextprotocol/server-github  (npx)
-            ├── terraform-mcp-server  (docker)
-            ├── argocd-mcp  (custom: mcp-servers/argocd-mcp)
-            ├── prometheus-mcp  (custom: mcp-servers/prometheus-mcp)
-            ├── datadog-mcp  (custom: mcp-servers/datadog-mcp)
-            ├── opensearch-mcp  (custom: mcp-servers/opensearch-mcp)
-            ├── bitbucket-mcp  (custom: mcp-servers/bitbucket-mcp)
-            ├── gitlab-mcp  (custom: mcp-servers/gitlab-mcp)
-            ├── jira-mcp  (custom: mcp-servers/jira-mcp)
-            └── confluence-mcp  (custom: mcp-servers/confluence-mcp)
-```
-
-MCP servers run as **child processes** (stdio transport). Each server exposes a list of tools; the MCP Manager discovers them at startup and makes them available to the LLM.
+OpsBot uses KAGENT's official tool server for the majority of DevOps tools. Two custom MCP servers cover integrations not yet in KAGENT's bundled server.
 
 ---
 
-## Building Custom MCP Servers
+## KAGENT official tool server
 
-All custom servers are TypeScript and must be compiled before the backend can launch them:
+**Image:** `ghcr.io/kagent-dev/kagent/tools` · **Port:** 8084 · **Protocol:** MCP over HTTP/SSE
 
-```bash
-for srv in argocd-mcp prometheus-mcp datadog-mcp opensearch-mcp bitbucket-mcp gitlab-mcp jira-mcp confluence-mcp; do
-    cd mcp-servers/$srv
-    npm install
-    npm run build
-    cd ../..
-done
-```
+The KAGENT tool server is deployed as the `kagent-tools` subchart and exposed to agents via a `RemoteMCPServer` CRD. It replaces what previously required 5+ separate MCP server pods.
 
-The compiled `dist/index.js` file is what the backend runs. The Dockerfile copies the entire `mcp-servers/` tree into the image.
+### Bundled tool categories
 
----
-
-## Configuring Which Servers Start
-
-Each server only starts if its required configuration is present. The guard conditions in `mcp/servers.py`:
-
-| Server | Starts when |
+| Category | Key tools |
 |---|---|
-| `kubernetes` | `MCP_KUBERNETES_COMMAND` is set (always) |
-| `github` | `GITHUB_TOKEN` is non-empty |
-| `terraform` | `TFE_TOKEN` is set OR `TERRAFORM_WORKING_DIR` exists |
-| `argocd` | `ARGOCD_SERVER_URL` is non-empty |
-| `prometheus` | `PROMETHEUS_URL` is non-empty |
-| `datadog` | `DATADOG_API_KEY` is non-empty |
-| `opensearch` | `OPENSEARCH_URL` is non-empty |
-| `bitbucket` | `BITBUCKET_USERNAME` is non-empty |
-| `gitlab` | `GITLAB_TOKEN` is non-empty |
-| `jira` | `JIRA_URL` is non-empty |
-| `confluence` | `CONFLUENCE_URL` is non-empty |
+| **Kubernetes** | `kubectl_get`, `kubectl_logs`, `kubectl_scale`, `kubectl_apply`, `kubectl_delete`, `kubectl_patch`, `rollout`, `get_events`, `get_cluster_configuration`, `exec_command`, `check_service_connectivity` |
+| **Helm** | `helm_list`, `helm_get`, `helm_upgrade`, `helm_install`, `helm_uninstall`, `helm_repo_add` |
+| **Argo Rollouts** | `promote_rollout`, `pause_rollout`, `set_rollout_image`, `verify_argo_rollouts_controller_install` |
+| **Prometheus** | `prometheus_query`, `prometheus_range_query`, `prometheus_labels`, `prometheus_targets` |
+| **Grafana** | `grafana_dashboard_management`, `grafana_alert_management`, `grafana_datasource_management` |
+| **Cilium** | `cilium_status_and_version`, `upgrade_cilium`, `connect_to_remote_cluster`, `toggle_hubble` |
+| **Istio** | `istio_analyze`, `istio_proxy_status`, `istio_proxy_config`, `istio_waypoint_*` |
+| **Shell** | `shell` — run arbitrary shell commands (e.g., `argocd` CLI, `terraform`, `aws`) |
+| **DateTime** | `current_date_time`, `format_time`, `parse_time` |
 
----
+### Configuration
 
-## Checking Server Status
+All configuration for the KAGENT tool server lives under the `kagent-tools:` key in `values.yaml`:
 
-In Slack:
-
+```yaml
+kagent-tools:
+  enabled: true
+  tools:
+    prometheus:
+      url: "http://prometheus.monitoring.svc.cluster.local:9090"
+    grafana:
+      url: "http://grafana.monitoring.svc.cluster.local:3000"
+      apiKey: ""        # Grafana service-account token
+    k8s:
+      tokenPassthrough: false
+    enabledTools: []    # empty = all categories enabled
+  rbac:
+    readOnly: false     # true = deploy read-only ClusterRole
+  # Kubeconfig for multi-cluster access (see examples/03-kubernetes.md)
+  extraVolumes:
+    - name: kubeconfig
+      secret:
+        secretName: opsbot-kubeconfig
+        optional: true
+  extraVolumeMounts:
+    - name: kubeconfig
+      mountPath: /root/.kube
+      readOnly: true
 ```
-/opsbot status
-```
 
-Or call the health endpoint:
+### Verify the tool server is running
 
 ```bash
-curl http://localhost:8000/health | jq '.checks.mcp_servers'
+kubectl get pods -n opsbot -l app=kagent-tools
+kubectl logs -n opsbot deployment/opsbot-kagent-tools | tail -20
+
+# Check registered tools via Prometheus metrics
+kubectl port-forward svc/opsbot-kagent-tools 8084:8084 -n opsbot
+curl -s http://localhost:8084/metrics | grep kagent_tools_mcp_registered_tools
 ```
 
 ---
 
-## Tool Naming Convention
+## Custom MCP servers
 
-Tools from MCP servers are namespaced with a double-underscore prefix:
+Two integrations still require custom pods because KAGENT does not yet publish official images for them.
+
+### GitHub MCP server
+
+Uses the official server published by GitHub, Inc.:
+
+```yaml
+mcpServers:
+  github:
+    image:
+      repository: ghcr.io/github/github-mcp-server
+      tag: latest
+```
+
+Required secret key: `GITHUB_TOKEN` in the `opsbot-secrets` K8s Secret.
 
 ```
-kubernetes__list_pods
-github__list_repositories
-argocd__sync_app
-prometheus__query_range
+@opsbot list open PRs in backend repo
+@opsbot create a PR from feature/fix to main in backend repo
+@opsbot check CI status for the latest commit on main
+@opsbot add john to backend-api with write access
 ```
 
-The tools registry (`tools/registry.py`) maps both the prefixed name and the bare name to the same risk level, so both resolve correctly.
+### Datadog MCP server
+
+Custom TypeScript server in `mcp-servers/datadog-mcp/`. Required secret keys: `DATADOG_API_KEY`, `DATADOG_APP_KEY`.
+
+```
+@opsbot check monitors for payment-service
+@opsbot mute the checkout-api latency monitor for 2 hours
+@opsbot query metrics for p99 latency of checkout-service last 1 hour
+```
+
+### Jira MCP server
+
+Custom TypeScript server in `mcp-servers/jira-mcp/`. Required secret keys: `JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN`.
+
+```
+@opsbot create a high-priority bug: "payment-service timeout in prod"
+@opsbot show my open tickets
+@opsbot transition PROJ-123 to In Review
+@opsbot assign PROJ-456 to alice
+```
 
 ---
 
-## Multi-cluster Kubernetes
+## How tools are wired to agents
 
-When `K8S_CONTEXTS` is set, servers are named per context:
+Each Agent CRD declares which tools it uses. The `opsbot-general` agent references all sources:
 
+```yaml
+tools:
+  # KAGENT bundled tool server (kubectl, helm, prometheus, ...)
+  - type: McpServer
+    mcpServer:
+      name: opsbot-kagent-tools
+      kind: RemoteMCPServer
+      apiGroup: kagent.dev
+      toolNames:
+        - kubectl_get
+        - kubectl_logs
+        - prometheus_query
+        # ... (see charts/opsbot/templates/kagent/agents.yaml)
+
+  - type: McpServer
+    mcpServer:
+      name: github-mcp
+      kind: MCPServer
+      apiGroup: kagent.dev
+
+  - type: McpServer
+    mcpServer:
+      name: datadog-mcp
+      kind: MCPServer
+      apiGroup: kagent.dev
+
+  - type: McpServer
+    mcpServer:
+      name: jira-mcp
+      kind: MCPServer
+      apiGroup: kagent.dev
 ```
-kubernetes-production__list_pods
-kubernetes-staging__list_pods
-```
 
-The LLM routes to the correct server based on context clues in your message.
+Inspect live tool registration:
+
+```bash
+kubectl get remotemcpservers,mcpservers -n opsbot
+kubectl describe agent opsbot-general -n opsbot
+```
 
 ---
 
-## Overriding MCP Server Commands
+## Adding a new integration
 
-```env
-# Use a locally built argocd-mcp instead of the default path
-MCP_ARGOCD_COMMAND=node /custom/path/argocd-mcp/dist/index.js
+### Option A — use the `shell` tool (fastest)
 
-# Use a specific version of the kubernetes server
-MCP_KUBERNETES_COMMAND=npx -y kubernetes-mcp-server@1.2.3
+The `shell` tool can run any binary in the KAGENT tool server pod. For CLIs with simple interfaces (ArgoCD, AWS, gcloud), this avoids building a custom MCP server:
 
-# Use a local Terraform binary instead of Docker
-MCP_TERRAFORM_COMMAND=npx -y @hashicorp/terraform-mcp-server
 ```
+@opsbot run: argocd app sync checkout-app --grpc-web
+@opsbot run: terraform plan -no-color in /workspace/infra/staging
+```
+
+Install extra CLIs by building a custom tool server image:
+
+```dockerfile
+FROM ghcr.io/kagent-dev/kagent/tools:latest
+RUN apt-get update && apt-get install -y curl && \
+    curl -sSL -o /usr/local/bin/argocd \
+      https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64 && \
+    chmod +x /usr/local/bin/argocd
+```
+
+Override the image in `values.yaml`:
+
+```yaml
+kagent-tools:
+  image:
+    registry: ghcr.io
+    repository: your-org/opsbot-tools
+    tag: "0.2.0"
+```
+
+### Option B — deploy a custom MCPServer CRD
+
+For richer structured tool definitions, add a new `MCPServer` entry to `charts/opsbot/templates/kagent/mcp-servers.yaml`:
+
+```yaml
+---
+apiVersion: kagent.dev/v1alpha1
+kind: MCPServer
+metadata:
+  name: argocd-mcp
+  namespace: {{ .Release.Namespace }}
+spec:
+  podTemplate:
+    spec:
+      containers:
+        - name: server
+          image: "your-registry/argocd-mcp:latest"
+          env:
+            - name: ARGOCD_SERVER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: opsbot-secrets
+                  key: ARGOCD_SERVER_URL
+```
+
+Then add it to the agent's `tools` list in `agents.yaml`.
 
 ---
 
-## Caveats
+## Tool server resource limits
 
-- **MCP servers run as child processes and are NOT automatically restarted.** If a server crashes after startup, its tools become unavailable. The health endpoint shows the degraded status but does not restart it. Restart the backend pod to reconnect.
-- **Failed servers don't block startup.** If an MCP server fails to connect, a warning is logged and it is skipped. Other tools remain available.
-- **Tool discovery happens at startup.** If a new tool is added to a running MCP server, it won't appear until the backend restarts.
-- **PID leak on worker restart.** MCP server processes are started by the FastAPI process but Celery workers don't own them. On `docker-compose restart worker`, the MCP children from the backend process are unaffected. This is expected behavior.
-- **Slow servers block startup.** The `initialize()` call uses `asyncio.gather()` — all servers connect concurrently, but startup won't complete until the slowest one succeeds or times out (30 seconds default).
-- **`npx` servers download on first run.** If `kubernetes-mcp-server` or `@modelcontextprotocol/server-github` are not pre-cached, they'll be fetched from npm during startup. Use a specific version tag and pre-cache in the Dockerfile for production.
+```yaml
+kagent-tools:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+```

@@ -1,0 +1,223 @@
+{{- if .Values.kagent.enabled }}
+---
+# General ops agent — handles Kubernetes, Helm, GitHub, Argo Rollouts, Prometheus, Grafana
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: opsbot-general
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opsbot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: agent
+spec:
+  type: Declarative
+  declarative:
+    modelConfig: {{ include "opsbot.fullname" . }}-claude
+    description: "OpsBot general DevOps and SRE automation agent"
+    systemPrompt: |
+      You are OpsBot, an advanced AI-powered DevOps and SRE automation assistant.
+      You help engineering teams execute infrastructure operations safely and efficiently via Slack.
+
+      ## Your Capabilities
+      - Kubernetes: List/inspect pods, fetch logs, deploy/rollback releases, scale deployments, check events
+      - Helm: List/upgrade/install/uninstall chart releases
+      - GitHub: Manage PRs, repos, branches, check CI status, trigger workflows
+      - Argo Rollouts: Promote, pause, and manage progressive delivery rollouts
+      - Prometheus: Query metrics with PromQL, check scrape targets and alert status
+      - Grafana: Manage dashboards and alert rules
+      - Datadog: Query metrics, check monitors, manage incidents
+      - Jira: Create, update, and track tickets
+      - Shell: Execute safe shell commands for additional automation
+
+      ## Behavior Rules
+      1. Always understand intent before acting. If ambiguous, ask ONE clarifying question.
+      2. Risk transparency: briefly explain what you are about to do before doing it.
+      3. Approval gates: destructive operations pause for human approval automatically.
+      4. Minimal scope: only do exactly what was asked. Do not make additional changes.
+      5. Namespace awareness: always confirm namespace/environment before mutating anything.
+      6. Keep responses concise — engineers are busy.
+
+      ## Cluster Auto-Discovery
+      Before running kubectl commands, if the user does not specify which cluster:
+      1. Call get_cluster_configuration to list all available kubeconfig contexts.
+      2. Infer the right context from natural language ("prod", "staging", "us-east").
+      3. Pass the resolved context name via the --context flag on every kubectl tool call.
+      4. If only one context exists, use it without asking.
+      5. If the user says "all clusters", iterate over every discovered context.
+
+      ## Security
+      You operate under RBAC controls. Never expose secrets, tokens, or credentials in responses.
+      All actions are audit-logged.
+    tools:
+      # KAGENT bundled tool server — kubernetes, helm, argo-rollouts, prometheus, grafana
+      - type: McpServer
+        mcpServer:
+          name: {{ include "opsbot.fullname" . }}-kagent-tools
+          kind: RemoteMCPServer
+          apiGroup: kagent.dev
+          toolNames:
+            # Kubernetes / kubectl
+            - kubectl_get
+            - kubectl_describe
+            - kubectl_logs
+            - kubectl_scale
+            - kubectl_apply
+            - kubectl_delete
+            - kubectl_patch
+            - kubectl_create
+            - kubectl_label
+            - kubectl_annotate
+            - rollout
+            - get_events
+            - get_cluster_configuration
+            - get_api_resources
+            - check_service_connectivity
+            - exec_command
+            # Helm
+            - helm_list
+            - helm_get
+            - helm_upgrade
+            - helm_install
+            - helm_uninstall
+            - helm_repo_add
+            - helm_repo_update
+            # Argo Rollouts
+            - promote_rollout
+            - pause_rollout
+            - set_rollout_image
+            - verify_argo_rollouts_controller_install
+            # Prometheus
+            - prometheus_query
+            - prometheus_range_query
+            - prometheus_targets
+            - prometheus_labels
+            # Grafana
+            - grafana_dashboard_management
+            - grafana_alert_management
+            - grafana_datasource_management
+            # Utilities
+            - shell
+            - current_date_time
+      # GitHub — official GitHub MCP server pod
+      - type: McpServer
+        mcpServer:
+          name: github-mcp
+          kind: MCPServer
+          apiGroup: kagent.dev
+      # Datadog — custom MCP server pod
+      - type: McpServer
+        mcpServer:
+          name: datadog-mcp
+          kind: MCPServer
+          apiGroup: kagent.dev
+      # Jira — custom MCP server pod
+      - type: McpServer
+        mcpServer:
+          name: jira-mcp
+          kind: MCPServer
+          apiGroup: kagent.dev
+
+---
+# SLO analysis specialist agent — queries Prometheus to propose SLOs
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: opsbot-slo
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opsbot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: agent
+spec:
+  type: Declarative
+  declarative:
+    modelConfig: {{ include "opsbot.fullname" . }}-claude
+    description: "OpsBot SLO analysis and SLI recommendation agent"
+    systemPrompt: |
+      You are the SLO Intelligence module of OpsBot. You specialize in:
+      - Analyzing service reliability metrics from Prometheus
+      - Proposing SLIs (Service Level Indicators) and SLOs (Service Level Objectives)
+      - Generating PrometheusRule YAML for SLO recording rules and alerting
+
+      When analyzing:
+      1. Query 30-day error rate, latency percentiles, and availability data
+      2. Compute error budget based on historical performance
+      3. Propose realistic SLO targets (slightly below current best-case performance)
+      4. Generate recording rules and alerting rules in PrometheusRule YAML format
+      5. Offer to create a GitHub PR with the SLO configuration
+    tools:
+      - type: McpServer
+        mcpServer:
+          name: {{ include "opsbot.fullname" . }}-kagent-tools
+          kind: RemoteMCPServer
+          apiGroup: kagent.dev
+          toolNames:
+            - prometheus_query
+            - prometheus_range_query
+            - prometheus_labels
+            - prometheus_targets
+            - grafana_alert_management
+            - current_date_time
+      - type: McpServer
+        mcpServer:
+          name: github-mcp
+          kind: MCPServer
+          apiGroup: kagent.dev
+
+---
+# Root cause analysis specialist agent — correlates signals across k8s, prometheus, logs
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: opsbot-rca
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opsbot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: agent
+spec:
+  type: Declarative
+  declarative:
+    modelConfig: {{ include "opsbot.fullname" . }}-claude
+    description: "OpsBot root cause analysis and incident investigation agent"
+    systemPrompt: |
+      You are the RCA (Root Cause Analysis) Intelligence module of OpsBot.
+
+      When investigating an incident:
+      1. Gather data from all available signals (logs, metrics, events, traces)
+      2. Identify anomalies and correlations in the timeline
+      3. Formulate hypotheses from most-likely to least-likely
+      4. Validate each hypothesis against the evidence
+      5. Produce a structured RCA report
+
+      Format RCA reports with:
+      - Summary: One sentence root cause
+      - Evidence: Key data points supporting the conclusion
+      - Timeline: Sequence of events leading to the incident
+      - Contributing Factors: Secondary causes
+      - Remediation: Immediate and long-term steps
+      - Action Items: Specific tasks with owners (if known)
+
+      Use get_cluster_configuration to discover available k8s contexts before querying
+      cluster signals. Investigate all relevant clusters if the incident spans multiple.
+    tools:
+      - type: McpServer
+        mcpServer:
+          name: {{ include "opsbot.fullname" . }}-kagent-tools
+          kind: RemoteMCPServer
+          apiGroup: kagent.dev
+          toolNames:
+            - kubectl_get
+            - kubectl_describe
+            - kubectl_logs
+            - get_events
+            - get_cluster_configuration
+            - prometheus_query
+            - prometheus_range_query
+            - prometheus_targets
+            - current_date_time
+            - shell
+      - type: McpServer
+        mcpServer:
+          name: github-mcp
+          kind: MCPServer
+          apiGroup: kagent.dev
+{{- end }}

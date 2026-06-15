@@ -167,6 +167,12 @@ class Settings(BaseSettings):
         "Contact an admin for emergency overrides."
     )
 
+    # KAGENT integration
+    # URL of the KAGENT controller A2A endpoint (in-cluster service).
+    kagent_url: str = "http://kagent-controller.kagent-system:8083"
+    # Kubernetes namespace where KAGENT manages Approval CRDs and OpsBot agents.
+    kagent_namespace: str = "opsbot"
+
     # MCP tool execution
     tool_timeout_seconds: int = 30  # per-tool call timeout; prevents slow integrations from stalling workers
 

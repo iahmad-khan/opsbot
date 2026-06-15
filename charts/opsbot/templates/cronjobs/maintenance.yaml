@@ -1,0 +1,75 @@
+# Replaces the Celery beat schedule for periodic maintenance tasks.
+# These CronJobs POST to the OpsBot API, which runs the actual async logic.
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "opsbot.fullname" . }}-expire-approvals
+  labels:
+    {{- include "opsbot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cronjob
+spec:
+  schedule: "*/5 * * * *"   # every 5 minutes
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: expire
+              image: curlimages/curl:latest
+              command:
+                - sh
+                - -c
+                - |
+                  curl -sf -X POST \
+                    "http://{{ include "opsbot.fullname" . }}:{{ .Values.service.port }}/approvals/maintenance/expire" \
+                    -H "Content-Type: application/json" \
+                    || exit 1
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
+                limits:
+                  cpu: 50m
+                  memory: 32Mi
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "opsbot.fullname" . }}-purge-audit-logs
+  labels:
+    {{- include "opsbot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cronjob
+spec:
+  schedule: "0 2 * * *"   # daily at 02:00 UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: purge
+              image: curlimages/curl:latest
+              command:
+                - sh
+                - -c
+                - |
+                  curl -sf -X POST \
+                    "http://{{ include "opsbot.fullname" . }}:{{ .Values.service.port }}/approvals/maintenance/purge-audit-logs" \
+                    -H "Content-Type: application/json" \
+                    || exit 1
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
+                limits:
+                  cpu: 50m
+                  memory: 32Mi

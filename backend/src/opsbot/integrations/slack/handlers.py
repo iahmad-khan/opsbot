@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 import uuid
@@ -12,6 +13,12 @@ from opsbot.config.settings import get_settings
 from opsbot.integrations.slack.client import SlackClient
 
 log = structlog.get_logger(__name__)
+
+
+def _log_task_error(task: asyncio.Task) -> None:
+    if not task.cancelled() and task.exception():
+        log.error("slack.bg_task.failed", task=task.get_name(), error=str(task.exception()))
+
 
 # Rate limiting: max requests per user per sliding window
 _RATE_LIMIT_MAX = 10
@@ -115,8 +122,7 @@ async def _handle_message_event(event: dict, say, client) -> None:
         log.warning("slack.rate_limited", user=requester_slack_id)
         return
 
-    # Acknowledge receipt immediately and capture the message ts so the Celery
-    # worker can update it with per-tool progress (prevents 30-120 s of silence).
+    # Acknowledge receipt immediately and capture the ts for in-place progress updates.
     try:
         ack_resp = await client.chat_postMessage(
             channel=channel_id,
@@ -128,15 +134,16 @@ async def _handle_message_event(event: dict, say, client) -> None:
         log.warning("slack.ack.failed", error=str(exc))
         working_ts = None
 
-    # Dispatch to Celery (keeps Slack's 3s timeout happy)
-    from opsbot.tasks.celery_app import process_message_task
-    process_message_task.delay(
+    # Dispatch to KAGENT as a background asyncio task (keeps Slack's 3 s timeout happy)
+    from opsbot.kagent.execution import execute_message
+    t = asyncio.create_task(execute_message(
         message=text,
         channel_id=channel_id,
         requester_slack_id=requester_slack_id,
         thread_ts=thread_ts,
         working_ts=working_ts,
-    )
+    ))
+    t.add_done_callback(_log_task_error)
 
 
 async def _handle_approval_action(body: dict, client, approved: bool, reason: str = "") -> None:
@@ -175,25 +182,29 @@ async def _handle_approval_action(body: dict, client, approved: bool, reason: st
             }],
         )
 
-    from opsbot.tasks.celery_app import process_approval_task
-    process_approval_task.delay(
+    from opsbot.kagent.execution import execute_approved_tool
+    t = asyncio.create_task(execute_approved_tool(
         approval_id=str(approval_id),
         approver_slack_id=approver_slack_id,
         approved=approved,
         reason=reason,
         channel_id=channel_id,
         thread_ts=body.get("message", {}).get("thread_ts"),
-    )
+    ))
+    t.add_done_callback(_log_task_error)
 
 
 async def _handle_status(body: dict, say) -> None:
-    from opsbot.mcp.manager import get_manager
-    manager = get_manager()
-    server_status = manager.get_server_status()
-    lines = ["*OpsBot Status*", ""]
-    for server, status in server_status.items():
-        emoji = "🟢" if status == "connected" else "🔴"
-        lines.append(f"{emoji} `{server}`: {status}")
+    from opsbot.config.settings import get_settings
+    s = get_settings()
+    lines = [
+        "*OpsBot Status* (KAGENT mode)",
+        "",
+        f"🤖 KAGENT controller: `{s.kagent_url}`",
+        f"📦 Namespace: `{s.kagent_namespace}`",
+        "",
+        "Use `kubectl get agents,mcpservers,approvals -n opsbot` to inspect the KAGENT resources.",
+    ]
     await say(text="\n".join(lines))
 
 

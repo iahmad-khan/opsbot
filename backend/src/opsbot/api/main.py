@@ -10,7 +10,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from opsbot.api.routes import approvals, auth, health, slack, sre, tasks
 from opsbot.config.settings import get_settings
-from opsbot.mcp.manager import get_manager
 
 log = structlog.get_logger(__name__)
 
@@ -18,15 +17,7 @@ log = structlog.get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     s = get_settings()
-    log.info("opsbot.startup", env=s.app_env, model=s.litellm_default_model)
-
-    # Initialize MCP servers
-    manager = get_manager()
-    try:
-        await manager.initialize()
-        log.info("mcp.initialized", servers=list(manager.get_server_status().keys()))
-    except Exception as e:
-        log.error("mcp.init.failed", error=str(e))
+    log.info("opsbot.startup", env=s.app_env, kagent_url=s.kagent_url)
 
     # Start Slack socket mode in background (only when tokens are configured)
     slack_task = None
@@ -35,16 +26,24 @@ async def lifespan(app: FastAPI):
         slack_task = asyncio.create_task(start_socket_mode())
         log.info("slack.socket_mode.starting")
 
+    # Start KAGENT Approval CRD watcher (gracefully skipped when not in-cluster)
+    from opsbot.kagent.approval_watcher import watch_approvals
+    watcher_task = asyncio.create_task(watch_approvals())
+    log.info("kagent.approval.watcher.starting")
+
     yield
 
     # Cleanup
+    watcher_task.cancel()
+    import contextlib
+    with contextlib.suppress(asyncio.CancelledError):
+        await watcher_task
+
     if slack_task:
         slack_task.cancel()
-        import contextlib
         with contextlib.suppress(asyncio.CancelledError):
             await slack_task
 
-    await manager.shutdown()
     log.info("opsbot.shutdown")
 
 
@@ -53,8 +52,8 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="OpsBot API",
-        description="Advanced DevOps & SRE Automation Platform",
-        version="0.1.0",
+        description="Advanced DevOps & SRE Automation Platform — KAGENT edition",
+        version="0.2.0",
         docs_url="/docs" if not s.is_production else None,
         redoc_url="/redoc" if not s.is_production else None,
         openapi_url="/openapi.json" if not s.is_production else None,
